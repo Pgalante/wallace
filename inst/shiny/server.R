@@ -497,6 +497,18 @@ shinyServer(function(input, output, session) {
     shinyjs::enable('dlMskEnvs')
   })
   
+  # # # # # # # # # # # # # # # # # 
+  # module Variable Correlations  #
+  # # # # # # # # # # # # # # # # #
+  observeEvent(input$gorunCorrRankUI, {
+  # stop if not background shape
+    req(bgExt())
+    varCorrs <- callModule(run_corrRankMod, "c4_corrRanks")
+    varCorrs()
+    # UI controls
+    #updateSelectInput(session, "curSp",)
+  })
+    
   # # # # # # # # # # # # # # # # # #
   # PROCESS ENVS: other controls ####
   # # # # # # # # # # # # # # # # # #

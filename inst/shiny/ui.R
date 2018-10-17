@@ -160,7 +160,15 @@ shinyUI(tagList(
                                                                  downloadButton('dlMskEnvs', "Download")),
                                                 HTML('<hr>'),
                                                 conditionalPanel("input.procEnvsSel == 'bgSel'", uiBottom(bgExtent_INFO)),
-                                                conditionalPanel("input.procEnvsSel == 'bgUser'", uiBottom(userBgExtent_INFO))
+                                                conditionalPanel("input.procEnvsSel == 'bgUser'", uiBottom(userBgExtent_INFO)),
+                                              
+                                                conditionalPanel("input.procEnvsSel == 'bgUser' | input.procEnvsSel == 'bgUser",
+                                                                 uiTop(runCorrRank_INFO),
+                                                                 div("Step 3:", id="step"), div("Perform Correlation Analysis", id="stepText"), br(), br(),
+                                                                 runCorrRankUI('c4_corrRanks'),
+                                                                 actionButton("gorunCorrRankUI", "Process")),
+                                                HTML('<hr>'),
+                                                conditionalPanel("input.procEnvsSel == 'bgUser' | input.procEnvsSel == 'bgUser", uiBottom(runCorrRank_INFO))
                                ),
                                # ESPACE ####
                                conditionalPanel("input.tabs == 'espace'",
