@@ -738,7 +738,7 @@ function(input, output, session) {
     # switch to Results tab
     updateTabsetPanel(session, 'main', selected = 'Results')
     # update radio buttons for Visualization component
-    updateRadioButtons(session, "curSp", selected = curSp())
+    #updateRadioButtons(session, "curSp", selected = curSp())
   })
 
   ################################################## #
