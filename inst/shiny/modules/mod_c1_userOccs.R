@@ -6,55 +6,50 @@ userOccs_UI <- function(id) {
   )
 }
 
-userOccs_MOD <- function(input, output, session, rvs) {
-  
-  readOccsCSV <- reactive({
-    req(input$userCSV)
+userOccs_MOD <- function(input, output, session) {
+  reactive({
+    # FUNCTION CALL ####
+    occsList <- c1_userOccs(input$userCSV$datapath, input$userCSV$name, shinyLogs)
     
-    # make occDB record NULL to keep track of where occurrences are coming from
-    rvs$occDB <- NULL
-    # record for RMD
-    rvs$userCSV <- input$userCSV
+    if (is.null(occsList)) return()
     
-    csv <- read.csv(input$userCSV$datapath)
-    
-    spName <- trimws(as.character(csv$name[1]))
-    
-    if (!all(c('name', 'longitude', 'latitude') %in% names(csv))) {
-      rvs %>% writeLog(type = "error", 'Please input CSV file with columns 
-                        "name", "longitude", "latitude".')
-      return()
-    }
-    
-    
-    # subset to just records with first species name, and non-NA latitude and longitude
-    uoccs <- csv %>% 
-      dplyr::filter(name == spName) %>%
-      dplyr::filter(!is.na(latitude) & !is.na(longitude))
-    
-    # remove duplicates
-    uoccs.dups <- duplicated(uoccs %>% dplyr::select(longitude, latitude))
-    uoccs <- uoccs[!uoccs.dups,]
+    # LOAD INTO SPP ####
+    # if species name is already in list, overwrite it
+    for(sp in names(occsList)) {
+      occs <- occsList[[sp]]$cleaned
+      occsOrig <- occsList[[sp]]$orig
+      if(!is.null(spp[[sp]])) spp[[sp]] <- NULL
+      spp[[sp]] <- list(occs = occs, 
+                       occData = list(occsOrig = occsOrig, occsCleaned = occs),
+                       rmm = rangeModelMetadata::rmmTemplate())
+      if(!is.null(occsList[[sp]]$bg)) spp[[sp]]$bg <- occsList[[sp]]$bg
       
-    if (nrow(uoccs) == 0) {
-      rvs %>% writeLog(type = 'warning', 'No records with coordinates found in', 
-                        input$userCSV$name, "for", spName, ".")
-      return()
+      # METADATA ####
+      spp[[sp]]$rmm$data$occurrence$taxa <- occs$scientific_name[1]
+      spp[[sp]]$rmm$data$occurrence$dataType <- "presence only"
+      spp[[sp]]$rmm$data$occurrence$presenceSampleSize <- nrow(occs)
+      spp[[sp]]$rmm$data$occurrence$sources <- "user"
+      spp[[sp]]$rmm$code$wallaceSettings$userCSV <- input$userCSV$name
     }
-    
-    rvs %>% writeLog("User-specified CSV file", input$userCSV$name, "with total of", 
-                      nrow(uoccs), "records with coordinates was uploaded.")
-    
-    for (col in c("year", "institutionCode", "catalogNumber", "basisOfRecord", "country", "stateProvince",
-                  "locality", "elevation")) {  # add all cols to match origOccs if not already there
-      if (!(col %in% names(uoccs))) uoccs[,col] <- NA
-    }
-    
-    uoccs$occID <- row.names(uoccs)  # add col for IDs
-    uoccs$pop <- unlist(apply(uoccs, 1, popUpContent))  # add col for map marker popup text
-    
-    return(uoccs)
+    # RETURN ####
+    return(occsList)
   })
-  
-  return(readOccsCSV)
+}
+
+userOccs_MAP <- function(map, session) {
+  occs <- spp[[curSp()]]$occData$occsCleaned
+  map %>% clearAll() %>%
+    addCircleMarkers(data = occs, lat = ~latitude, lng = ~longitude, 
+                     radius = 5, color = 'red', fill = TRUE, fillColor = "red", 
+                     fillOpacity = 0.2, weight = 2, popup = ~pop) %>%
+    zoom2Occs(occs)
+}
+
+userOccs_INFO <- infoGenerator(modName = "User-specified Occurrences",
+                              modAuts = "Jamie M. Kass, Bruno Vilela, Gonzalo E. 
+                                        Pinilla-Buitrago, Robert P. Anderson",
+                              pkgName = NULL)
+
+userOccs_RMD <- function(sp) {
+  list(userOccsCsvName = spp[[sp]]$rmm$code$wallaceSettings$userCSV)
 }

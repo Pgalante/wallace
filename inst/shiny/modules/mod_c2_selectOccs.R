@@ -5,44 +5,44 @@ selectOccs_UI <- function(id) {
   )
 }
 
-selectOccs_MOD <- function(input, output, session, rvs) {
-  
+selectOccs_MOD <- function(input, output, session) {
   reactive({
-    if (is.null(rvs$occs)) {
-      rvs %>% writeLog(type = 'error', "Before processing occurrences, 
-                       obtain the data in component 1.")
-      return()
-    }
-    if (is.null(rvs$polySelXY)) {
-      rvs %>% writeLog(type = 'error', 'The polygon has not been finished. Please 
-                                        press "Finish" on the map toolbar, then 
-                                        the "Select Occurrences" button.')
-      return()
-    }
+    # FUNCTION CALL ####
+    occs.sel <- c2_selectOccs(occs(), 
+                              spp[[curSp()]]$polySelXY,
+                              spp[[curSp()]]$polySelID, 
+                              shinyLogs)
+    req(occs.sel)
     
-    occs.xy <- rvs$occs[c('longitude', 'latitude')]
+    # LOAD INTO SPP ####
+    spp[[curSp()]]$occs <- occs.sel
     
-    # make spatial pts object of original occs and preserve origID
-    pts <- sp::SpatialPointsDataFrame(occs.xy, data=rvs$occs['occID'])
+    # METADATA ####
+    polyX <- printVecAsis(round(spp[[curSp()]]$polySelXY[,1], digits=4))
+    polyY <- printVecAsis(round(spp[[curSp()]]$polySelXY[,2], digits=4))
+    spp[[curSp()]]$rmm$code$wallaceSettings$occsSelPolyCoords <- paste0('X: ', polyX, ', Y: ', polyY)
     
-    newPoly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(rvs$polySelXY)), ID=rvs$polySelID)))  # create new polygon from coords
-    
-    intersect <- sp::over(pts, newPoly)
-    ptRemIndex <- which(is.na(intersect))
-    
-    if (length(ptRemIndex) > 0) {
-      ptRemIndex <- as.numeric(ptRemIndex)  
-      remIDs <- as.numeric(pts[ptRemIndex,]$occID)
-      
-      occs.sel <- rvs$occs[-ptRemIndex,]
-      
-      rvs %>% writeLog("Removing occurrences with occID = ", remIDs, 
-                       ". Updated data has n = ", nrow(occs.sel), " records.")      
-      return(occs.sel)
-    } else {
-      rvs %>% writeLog("Please select a subset of points to retain in the analysis.") 
-      polySelX <- polySelY <- NULL
-      return(rvs$occs)
-    }
+    return(occs.sel)
   })
+}
+
+selectOccs_MAP <- function(map, session) {
+  map %>% clearAll() %>%
+    addCircleMarkers(data = occs(), lat = ~latitude, lng = ~longitude, 
+                     radius = 5, color = 'red', fill = TRUE, fillColor = "red", 
+                     fillOpacity = 0.2, weight = 2, popup = ~pop) %>%
+    zoom2Occs(occs()) %>%
+    leaflet.extras::addDrawToolbar(targetGroup='draw', polylineOptions = FALSE,
+                                   rectangleOptions = FALSE, circleOptions = FALSE,
+                                   markerOptions = FALSE, circleMarkerOptions = FALSE,
+                                   editOptions = leaflet.extras::editToolbarOptions())
+}
+
+selectOccs_INFO <- infoGenerator(modName = "Select Occurrences On Map",
+                              modAuts = "Jamie M. Kass, Robert P. Anderson",
+                              pkgName = "leaflet.extras")
+
+selectOccs_RMD <- function(sp) {
+  list(selectByID_xy = spp[[sp]]$polySelXY,
+       selectByID_id = spp[[sp]]$polySelID)
 }

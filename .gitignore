@@ -1,7 +1,14 @@
 # Mac OS files
 .DS_Store
+<<<<<<< HEAD
+
 # HTML files
 .html
+
+=======
+# HTML files
+.html
+>>>>>>> master
 # History files
 .Rhistory
 .Rapp.history
@@ -26,4 +33,9 @@ temp*
 KeepNA
 keepInteger
 inst/doc
+<<<<<<< HEAD
 *Thumbs.db
+=======
+
+wallaceFork.Rproj
+>>>>>>> 3e48e1964f1a2588fb21fefacc78f0b3d5112ce4

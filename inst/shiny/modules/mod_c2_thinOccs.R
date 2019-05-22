@@ -2,46 +2,66 @@
 thinOccs_UI <- function(id) {
   ns <- NS(id)
   tagList(
-    tags$div(title='The minimum distance between occurrence locations (nearest neighbor distance) in km for resulting thinned dataset. Ideally based on species biology (e.g., home-range size).',
-             numericInput(ns("thinDist"), label = "Thinning distance (km)", value = 0))
+    # tags$div(checkboxInput(ns("spThinAllSp"), label = "Batch for all species?", value = TRUE),
+    tags$div(
+      title='The minimum distance between occurrence locations (nearest neighbor distance) in km for resulting thinned dataset. Ideally based on species biology (e.g., home-range size).',
+      numericInput(ns("thinDist"), label = "Thinning distance (km)", value = 10), # Check default (value = 0)
+      checkboxInput(ns("batch"), label = strong("Batch"), value = TRUE)) # Check default (value = FALSE)
   )
 }
 
-thinOccs_MOD <- function(input, output, session, rvs) {
-
-  doThin <- reactive({
-    if (is.null(rvs$occs)) {
-      rvs %>% writeLog(type = 'error', "Before processing occurrences, 
-                       obtain the data in component 1.")
-      return()
-    }
+thinOccs_MOD <- function(input, output, session) {
+  reactive({
+    # loop over all species if batch is on
+    if(input$batch == TRUE) spLoop <- allSp() else spLoop <- curSp()
     
-    if (input$thinDist <= 0) {
-      rvs %>% writeLog(type = "error", 'Assign positive distance to thinning parameter.')
-      return()
-    }
-    
-    # record for RMD
-    rvs$thinDist <- input$thinDist
-    
-    withProgress(message = "Spatially Thinning Localities...", {  # start progress bar
-      output <- spThin::thin(rvs$occs, 'latitude', 'longitude', 'name', thin.par = input$thinDist,
-                             reps = 100, locs.thinned.list.return = TRUE, write.files = FALSE,
-                             verbose = FALSE)
+    for(sp in spLoop) {
+      # FUNCTION CALL ####
+      occs.thin <- c2_thinOccs(spp[[sp]]$occs,
+                               input$thinDist,
+                               shinyLogs)
+      req(occs.thin)
       
-      # pull thinned dataset with max records, not just the first in the list
-      maxThin <- which(sapply(output, nrow) == max(sapply(output, nrow)))
-      maxThin <- output[[ifelse(length(maxThin) > 1, maxThin[1], maxThin)]]  # if more than one max, pick first
-      occs.thin <- rvs$occs[as.numeric(rownames(maxThin)),]
-      # if (!is.null(values$inFile)) {
-      #   thinned.inFile <- values$inFile[as.numeric(rownames(output[[1]])),]
-      # }
-    })
-    
-    rvs %>% writeLog('Total records thinned to [', nrow(occs.thin), '] localities.')
-    
-    return(occs.thin)
+      # LOAD INTO SPP ####
+      # record present occs before thinning (this may be different from occData$occOrig)
+      spp[[sp]]$procOccs$occsPreThin <- spp[[sp]]$occs
+      spp[[sp]]$occs <- occs.thin
+      spp[[sp]]$procOccs$occsThin <- occs.thin
+      
+      # METADATA ####
+      # perhaps there should be a thinDist metadata field?
+      spp[[sp]]$rmm$code$wallaceSettings$thinDistKM <- input$thinDist  
+    }
   })
-
-  return(doThin)
 }
+
+thinOccs_MAP <- function(map, session) {
+  # if you've thinned already, map thinned points blue
+  # and kept points red
+  if(!is.null(spp[[curSp()]]$procOccs$occsThin)) {
+    
+    occs.preThin <- spp[[curSp()]]$procOccs$occsPreThin
+    map %>% clearAll() %>% 
+      addCircleMarkers(data = occs.preThin, lat = ~latitude, lng = ~longitude, 
+                       radius = 5, color = 'red', fill = TRUE, fillColor = "blue", 
+                       fillOpacity = 1, weight = 2, popup = ~pop) %>%
+      addCircleMarkers(data = occs(), lat = ~latitude, lng = ~longitude, 
+                       radius = 5, color = 'red', fill = TRUE, fillColor = "red", 
+                       fillOpacity = 1, weight = 2, popup = ~pop) %>%
+      zoom2Occs(occs()) %>%
+      addLegend("bottomright", colors = c('red', 'blue'), title = "Occ Records", 
+                labels = c('retained', 'removed'), opacity = 1)  
+  } else {
+    # if you haven't thinned, map all points red
+    map %>% clearAll() %>% 
+      addCircleMarkers(data = occs(), lat = ~latitude, lng = ~longitude, 
+                       radius = 5, color = 'red', fill = TRUE, fillColor = "red", 
+                       fillOpacity = 0.2, weight = 2, popup = ~pop) %>%
+      zoom2Occs(occs()) %>%
+      leaflet.extras::removeDrawToolbar(clearFeatures = TRUE)
+  }
+}
+
+thinOccs_INFO <- infoGenerator(modName = "Spatial Thin",
+                               modAuts = "Jamie M. Kass, Matthew E. Aiello-Lammens, Robert P. Anderson",
+                               pkgName = "spThin")

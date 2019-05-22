@@ -1,65 +1,78 @@
 
-partSp_UI <- function(id) {
+partitionSpat_UI <- function(id) {
   ns <- NS(id)
   tagList(
-    selectInput(ns("partSpSel"), "Options Available:",
+    selectInput(ns("partitionSpatSel"), "Options Available:",
                 choices = list("None selected" = '',
                                "Block (k = 4)" = "block",
                                "Checkerboard 1 (k = 2)" = "cb1",
-                               "Checkerboard 2 (k = 4)" = "cb2")),
-    uiOutput(ns("aggFactui"))
+                               "Checkerboard 2 (k = 4)" = "cb2"), 
+                selected = 'block'), # Check default (no selected)
+    conditionalPanel(sprintf("input['%1$s'] == 'cb1' | input['%1$s'] == 'cb2'", 
+                             ns("partitionSpatSel")),
+                     numericInput(ns("aggFact"), label = "Aggregation Factor", 
+                                  value = 2, min = 2)),
+    checkboxInput(ns("batch"), label = strong("Batch"), value = T) # Check default (value = FALSE)
   )
 }
 
-partSp_MOD <- function(input, output, session, rvs) {
-  
-  output$aggFactui <- renderUI({
-    ns <- session$ns
-    if (input$partSpSel == "cb1" | input$partSpSel == "cb2") {
-      numericInput(ns("aggFact"), label = "Aggregation Factor", value = 2, min = 2)
-    }
-  })
-  
+partitionSpat_MOD <- function(input, output, session) {
   reactive({
-    if (is.null(rvs$bgMsk)) {
-      rvs %>% writeLog(type = 'error', "Before partitioning occurrences, 
-                       mask your environmental variables by your background extent.")
-      return()
-    }
-    if (input$partSpSel == '') {
-      rvs %>% writeLog(type = 'error', "Please select a partitioning option.")
-      return()
-    }
-    if (input$partSpSel == 'cb1' | input$partSpSel == 'cb2') {
-      if (is.na(input$aggFact) | input$aggFact <= 1) {
-        rvs %>% writeLog(type = 'error', "Please specify a positive aggregation 
-                         factor greater than 1.")
+    
+    # loop over all species if batch is on
+    if(input$batch == TRUE) spLoop <- allSp() else spLoop <- curSp()
+    
+    # PROCESSING ####
+    for(sp in spLoop) {
+      if (is.null(bgMask())) {
+        shinyLogs %>% writeLog(type = 'error', "Before partitioning occurrences for ", sp,
+                               ", mask your environmental variables by your background extent.")
         return()
       }
+      
+      # FUNCTION CALL ####
+      group.data <- c5_partitionOccs(spp[[sp]]$occs, spp[[sp]]$bg, input$partitionSpatSel, 
+                                     kfolds = NULL, bgMask = spp[[sp]]$procEnvs$bgMask, 
+                                     aggFact = input$aggFact, shinyLogs)
+      req(group.data)
+      
+      # LOAD INTO SPP ####
+      spp[[sp]]$occs$partition <- group.data$occ.grp
+      spp[[sp]]$bg$partition <- group.data$bg.grp
+      
+      # METADATA ####
+      if(input$partitionSpatSel == 'block') {
+        spp[[sp]]$rmm$model$partition$numberFolds <- 4
+        spp[[sp]]$rmm$model$partition$partitionRule <- 'spatial block'
+      }
+      if(input$partitionSpatSel == 'cb1') {
+        spp[[sp]]$rmm$model$partition$numberFolds <- 2
+        spp[[sp]]$rmm$model$partition$partitionRule <- 'checkerboard'
+      }
+      if(input$partitionSpatSel == 'cb2') {
+        spp[[sp]]$rmm$model$partition$numberFolds <- 4
+        spp[[sp]]$rmm$model$partition$partitionRule <- 'hierarchical checkerboard'
+        spp[[sp]]$rmm$model$partition$notes <- paste('aggregation factor =', input$aggFact)
+      }
     }
-    # record for RMD
-    rvs$comp5 <- input$partSpSel
-    rvs$aggFact <- input$aggFact
     
-    occs.xy <- rvs$occs %>% dplyr::select(longitude, latitude)
-
-    if (input$partSpSel == 'block') {
-      group.data <- ENMeval::get.block(occs.xy, rvs$bgPts)
-      rvs %>% writeLog("Occurrences partitioned by block method.")
-    } else if (input$partSpSel == 'cb1') {
-      withProgress(message = "Aggregating rasters...", {
-        group.data <- ENMeval::get.checkerboard1(occs.xy, rvs$bgMsk, rvs$bgPts, input$aggFact)
-        rvs %>% writeLog(paste0("Occurrences partitioned by checkerboard 1 method with 
-                         aggregation factor ", input$aggFact, "."))
-      })
-    } else if (input$partSpSel == 'cb2') {
-      withProgress(message = "Aggregating rasters...", {
-        group.data <- ENMeval::get.checkerboard2(occs.xy, rvs$bgMsk, rvs$bgPts, input$aggFact)
-        rvs %>% writeLog(paste0("Occurrences partitioned by checkerboard 2 method with 
-                         aggregation factor ", input$aggFact, "."))
-      })
-    }
-    
-    return(group.data)
   })
 }
+
+partitionSpat_MAP <- function(map, session) {
+  updateTabsetPanel(session, 'main', selected = 'Map')
+  req(occs()$partition)
+  occsGrp <- occs()$partition
+  # colors for partition symbology
+  newColors <- gsub("FF$", "", rainbow(max(occsGrp)))
+  partsFill <- newColors[occsGrp]
+  map %>% clearAll() %>%
+    map_occs(occs(), fillColor = partsFill, fillOpacity = 1) %>%
+    addLegend("bottomright", colors = newColors,
+              title = "Partition Groups", labels = sort(unique(occsGrp)),
+              opacity = 1)
+}
+
+partitionSpat_INFO <- infoGenerator(modName = "Spatial Partition",
+                                    modAuts = "Jamie M. Kass, Bruno Vilela, Robert P. Anderson",
+                                    pkgName = "ENMeval")

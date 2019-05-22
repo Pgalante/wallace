@@ -1,10 +1,15 @@
 projectTime_UI <- function(id) {
   ns <- NS(id)
   tagList(
+    # aliases are different for ecoclimate temporal scenarios. e.g. 
+    # "lgm" is "LGM"
+    # "mid" is "Holo"
+    # "2.6" is "Future 2.6"
+    # "4.5" is "Future 4.5"
+    # "6" is "Future 6"
+    # "8.5" is "Future 8.5"
     selectInput(ns("selTime"), label = "Select time period",
                 choices = list("Select period" = "",
-                               # "Last Glacial Maximum (~22,000 years ago)" = 'lgm',
-                               # "Mid Holocene (~7000 years ago)" = 'mid',
                                "2050" = 50,
                                "2070" = 70)),
     uiOutput(ns('selGCMui')),
@@ -14,19 +19,32 @@ projectTime_UI <- function(id) {
                                '4.5' = 45,
                                '6.0' = 60,
                                '8.5' = 85)),
-    threshPred_UI(ns('threshPred'))
+    tags$div(title='Create binary map of predicted presence/absence assuming all values above threshold value represent presence. 
+             Also can be interpreted as a "potential distribution" (see guidance).',
+             selectInput(ns('threshold'), label = "Set threshold",
+                         choices = list("No threshold" = 'none',
+                                        "Minimum Training Presence" = 'mtp', 
+                                        "10 Percentile Training Presence" = 'p10',
+                                        "Quantile of Training Presences" = 'qtp'))),
+    conditionalPanel(sprintf("input['%s'] == 'qtp'", ns("threshold")),
+                     sliderInput(ns("trainPresQuantile"), "Set quantile",
+                                 min = 0, max = 1, value = .05)),
+    conditionalPanel(condition = sprintf("input.modelSel == 'Maxent' & input['%s'] == 'none'", 
+                                         ns("threshold")),
+                     h5("Prediction output is the same than Visualize component (**)"))
   )
 }
 
-projectTime_MOD <- function(input, output, session, rvs) {
-  
+projectTime_MOD <- function(input, output, session) {
+  GCMlookup <- c(AC="ACCESS1-0", BC="BCC-CSM1-1", CC="CCSM4", CE="CESM1-CAM5-1-FV2",
+                 CN="CNRM-CM5", GF="GFDL-CM3", GD="GFDL-ESM2G", GS="GISS-E2-R",
+                 HD="HadGEM2-AO", HG="HadGEM2-CC", HE="HadGEM2-ES", IN="INMCM4",
+                 IP="IPSL-CM5A-LR", ME="MPI-ESM-P", MI="MIROC-ESM-CHEM", MR="MIROC-ESM",
+                 MC="MIROC5", MP="MPI-ESM-LR", MG="MRI-CGCM3", NO="NorESM1-M")
+  # dynamic ui for GCM selection: choices differ depending on choice of time period
   output$selGCMui <- renderUI({
     ns <- session$ns
-    GCMlookup <- c(AC="ACCESS1-0", BC="BCC-CSM1-1", CC="CCSM4", CE="CESM1-CAM5-1-FV2",
-                   CN="CNRM-CM5", GF="GFDL-CM3", GD="GFDL-ESM2G", GS="GISS-E2-R",
-                   HD="HadGEM2-AO", HG="HadGEM2-CC", HE="HadGEM2-ES", IN="INMCM4",
-                   IP="IPSL-CM5A-LR", ME="MPI-ESM-P", MI="MIROC-ESM-CHEM", MR="MIROC-ESM",
-                   MC="MIROC5", MP="MPI-ESM-LR", MG="MRI-CGCM3", NO="NorESM1-M")
+    
     if (input$selTime == 'lgm') {
       gcms <- c('CC', 'MR', 'MC')
     } else if (input$selTime == 'mid') {
@@ -41,28 +59,26 @@ projectTime_MOD <- function(input, output, session, rvs) {
   })
   
   reactive({
-    if (is.null(rvs$predCur)) {
-      rvs %>% writeLog(type = 'error', 'Calculate a model prediction in component 7 
-                       before projecting.')
+    # ERRORS ####
+    if (is.null(spp[[curSp()]]$visualization$mapPred)) {
+      shinyLogs %>% writeLog(type = 'error', 'Calculate a model prediction in component 7 
+                             before projecting.')
       return()
     }
-    if (is.null(rvs$polyPjXY) | identical(rvs$polySelXY, rvs$polyPjXY)) {
-      rvs %>% writeLog(type = 'error', "The polygon has not been drawn and finished. 
-                       Please use the draw toolbar on the left-hand of the map to complete
-                       the polygon.")
+    if (is.null(spp[[curSp()]]$polyPjXY)) {
+      shinyLogs %>% writeLog(type = 'error', "The polygon has not been drawn and finished. 
+                             Please use the draw toolbar on the left-hand of the map to complete
+                             the polygon.")
       return()
     }
     
-    # record for RMD
-    rvs$pjTimePar <- list(rcp=input$selRCP, gcm=input$selGCM, year=input$selTime)
-    
-    if (is.null(rvs$polyPjXY)) {
-      rvs %>% writeLog(type = 'error', 'Select projection extent first.')
+    if(is.null(spp[[curSp()]]$polyPjXY)) {
+      shinyLogs %>% writeLog(type = 'error', 'Select projection extent first.')
       return()
     }
-    envsRes <- raster::res(rvs$envs)[1]
-    if (envsRes < 0.01) {
-      rvs %>% writeLog(type = 'error', 'Project to New Time currently only available with resolutions >30 arc seconds.')
+    envsRes <- raster::res(envs())[1]
+    if(envsRes < 0.01) {
+      shinyLogs %>% writeLog(type = 'error', 'Project to New Time currently only available with resolutions >30 arc seconds.')
       return()
     }
     
@@ -76,67 +92,142 @@ projectTime_MOD <- function(input, output, session, rvs) {
                   0,1,1,1,1,1,1,1,1,1,1,1,1,1), ncol=4)
     i <- m[which(input$selGCM == gcms), which(input$selRCP == rcps)]
     if (!i) {
-      rvs %>% writeLog(type = 'error', 'This combination of GCM and RCP is not 
+      shinyLogs %>% writeLog(type = 'error', 'This combination of GCM and RCP is not 
                        available. Please make a different selection.')
       return()
     }
     
-    withProgress(message = paste("Retrieving WorldClim data for", input$selTime, input$selRCP, "..."), {
+    # DATA ####
+    smartProgress(shinyLogs, message = paste("Retrieving WorldClim data for", input$selTime, input$selRCP, "..."), {
       projTimeEnvs <- raster::getData('CMIP5', var = "bio", res = envsRes * 60,
                                       rcp = input$selRCP, model = input$selGCM, year = input$selTime)
       names(projTimeEnvs) <- paste0('bio', c(paste0('0',1:9), 10:19))
       # in case user subsetted bioclims
-      projTimeEnvs <- projTimeEnvs[[rvs$bcSels]]
+      projTimeEnvs <- projTimeEnvs[[names(envs())]]
     })
     
-    # create new spatial polygon from coordinates
-    newPoly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(rvs$polyPjXY)), ID=rvs$polyPjID)))  
+    # FUNCTION CALL ####    
+    predType <- rmm()$output$prediction$notes
+    projTime.out <- c8_projectTime(evalOut(), curModel(), projTimeEnvs, predType, 
+                                   alg = rmm()$model$algorithm, 
+                                   clamp = rmm()$model$maxent$clamping,
+                                   spp[[curSp()]]$polyPjXY,
+                                   spp[[curSp()]]$polyPjID, shinyLogs)
+    projExt <- projTime.out$projExt
+    projTime <- projTime.out$projTime
     
-    # concatanate coords to a single character
-    xy.round <- round(rvs$polyPjXY, digits = 2)
-    coordsChar <- paste(apply(xy.round, 1, function(b) paste0('(',paste(b, collapse=', '),')')),
-                        collapse=', ')  
-    if (rvs$comp6 == 'bioclim') {
-      rvs %>% writeLog('New time projection for BIOCLIM model with extent coordinates:', coordsChar)
-    } else if (rvs$comp6 == 'maxent') {
-      if (rvs$clamp == T | rvs$algMaxent == "maxent.jar") {
-        rvs %>% writeLog('New time projection for clamped model', rvs$modSel, 'with extent coordinates:',
-                         coordsChar)
-      } else if (rvs$clamp == F) {
-        rvs %>% writeLog('New time projection for unclamped model', rvs$modSel, 'with extent coordinates:',
-                         coordsChar)
+    # PROCESSING ####
+    # generate binary prediction based on selected thresholding rule 
+    # (same for all Maxent prediction types because they scale the same)
+    occPredVals <- spp[[curSp()]]$visualization$occPredVals
+    
+    if(!(input$threshold == 'none')) {
+      # use threshold from present-day model training area
+      if (input$threshold == 'mtp') {
+        thr <- quantile(occPredVals, probs = 0)
+      } else if (input$threshold == 'p10') {
+        thr <- quantile(occPredVals, probs = 0.1)
+      } else if (input$threshold == 'qtp'){
+        thr <- quantile(occPredVals, probs = input$trainPresQuantile)
       }
+      projTimeThr <- projTime > thr
+      shinyLogs %>% writeLog("Projection of model to ", 
+                             paste0('20', input$selTime), " for ", 
+                             em(spName(occs())), ' with threshold ', input$threshold, ' (', 
+                             formatC(thr, format = "e", 2), ") for GCM ", GCMlookup[input$selGCM], 
+                             " under RCP ", as.numeric(input$selRCP)/10.0, ".")
+    } else {
+      projTimeThr <- projTime
+      shinyLogs %>% writeLog("Projection of model to ", 
+                             paste0('20', input$selTime), " for ", 
+                             em(spName(occs())), ' with ', predType, " output for GCM ",
+                             GCMlookup[input$selGCM], 
+                             " under RCP ", as.numeric(input$selRCP)/10.0, ".")
     }
+    raster::crs(projTimeThr) <- raster::crs(envs())
+    # rename
+    names(projTimeThr) <- paste0(curModel(), '_thresh_', predType)
     
-    withProgress(message = "Clipping environmental data to current extent...", {
-      pjtMsk <- raster::crop(projTimeEnvs, newPoly)
-      pjtMsk <- raster::mask(pjtMsk, newPoly)
-    })
+    # LOAD INTO SPP ####
+    spp[[curSp()]]$project$pjEnvs <- projExt
+    spp[[curSp()]]$project$mapProj <- projTimeThr
+    spp[[curSp()]]$project$mapProjVals <- getRasterVals(projTimeThr, predType)
     
-    modCur <- rvs$mods[[rvs$modSel]]
+    # METADATA ####
+    projYr <- paste0('20', input$selTime)
+    spp[[curSp()]]$rmm$data$transfer$environment1$minVal <- printVecAsis(raster::cellStats(projExt, min), asChar = TRUE)
+    spp[[curSp()]]$rmm$data$transfer$environment1$maxVal <- printVecAsis(raster::cellStats(projExt, max), asChar = TRUE)
+    spp[[curSp()]]$rmm$data$transfer$environment1$yearMin <- projYr
+    spp[[curSp()]]$rmm$data$transfer$environment1$yearMax <- projYr
+    spp[[curSp()]]$rmm$data$transfer$environment1$resolution <- paste(round(raster::res(projExt)[1] * 60, digits = 2), "degrees")
+    spp[[curSp()]]$rmm$data$transfer$environment1$extentSet <- printVecAsis(as.vector(projExt@extent), asChar = TRUE)
+    spp[[curSp()]]$rmm$data$transfer$environment1$extentRule <- "project to user-selected new time"
+    spp[[curSp()]]$rmm$data$transfer$environment1$sources <- "WorldClim 1.4"
+    spp[[curSp()]]$rmm$data$transfer$environment1$notes <- paste("projection to year", projYr, "for GCM", 
+                                  GCMlookup[input$selGCM], "under RCP", 
+                                  as.numeric(input$selRCP)/10.0)
     
-    withProgress(message = ("Projecting to new time..."), {
-      if (rvs$comp6 == 'bioclim') {
-        modProjTime <- dismo::predict(modCur, pjtMsk)
-      } else if (rvs$comp6 == 'maxent') {
-        if (rvs$algMaxent == "maxnet") {
-          if (rvs$comp7.type == "raw") {pargs <- "exponential"} else {pargs <- rvs$comp7.type}
-          modProjTime <- ENMeval::maxnet.predictRaster(modCur, pjtMsk, type = pargs, clamp = rvs$clamp)
-        } else if (rvs$algMaxent == "maxent.jar") {
-          pargs <- paste0("outputformat=", rvs$comp7.type)
-          modProjTime <- dismo::predict(modCur, pjtMsk, args = pargs)
-        }
-      }
-      
-      modProjTime.thr.call <- callModule(threshPred_MOD, "threshPred", modProjTime)
-      modProjTime.thr <- modProjTime.thr.call()
-      pjPred <- modProjTime.thr$pred
-      rvs$comp8.thr <- modProjTime.thr$thresh
-      rvs %>% writeLog("Projected to", paste0('20', input$selTime), 
-                       "for GCM", GCMlookup[input$selGCM], 
-                       "under RCP", as.numeric(input$selRCP)/10.0, ".")
-    })
-    
-    return(list(pjMsk=pjtMsk, pjPred=pjPred))
+    spp[[curSp()]]$rmm$output$transfer$environment1$units <- ifelse(predType == "raw", "relative occurrence rate", predType)
+    spp[[curSp()]]$rmm$output$transfer$environment1$minVal <- printVecAsis(raster::cellStats(projTimeThr, min), asChar = TRUE)
+    spp[[curSp()]]$rmm$output$transfer$environment1$maxVal <- printVecAsis(raster::cellStats(projTimeThr, max), asChar = TRUE)
+    if(!(input$threshold == 'none')) {
+      spp[[curSp()]]$rmm$output$transfer$environment1$thresholdSet <- thr
+    } else {
+      spp[[curSp()]]$rmm$output$transfer$environment1$thresholdSet <- NULL
+    }
+    spp[[curSp()]]$rmm$output$transfer$environment1$thresholdRule <- input$threshold
+    spp[[curSp()]]$rmm$output$transfer$notes <- NULL
   })
 }
+
+projectTime_MAP <- function(map, session) {
+  updateTabsetPanel(session, 'main', selected = 'Map')
+  req(evalOut())
+  map %>% leaflet.extras::addDrawToolbar(targetGroup='draw', polylineOptions = FALSE,
+                                         rectangleOptions = FALSE, circleOptions = FALSE,
+                                         markerOptions = FALSE, circleMarkerOptions = FALSE,
+                                         editOptions = leaflet.extras::editToolbarOptions())
+  req(spp[[curSp()]]$polyPjXY, spp[[curSp()]]$project)
+  polyPjXY <- spp[[curSp()]]$polyPjXY
+  mapProjVals <- spp[[curSp()]]$project$mapProjVals
+  rasCols <- c("#2c7bb6", "#abd9e9", "#ffffbf", "#fdae61", "#d7191c")
+  # if no threshold specified
+  if(rmm()$output$transfer$environment1$thresholdRule != 'none') {
+    rasPal <- c('gray', 'red')
+    map %>% removeControl("proj") %>%
+      addLegend("bottomright", colors = c('gray', 'red'), title = "Thresholded Suitability<br>(Projected)",
+                labels = c("predicted absence", "predicted presence"), opacity = 1, layerId = 'proj')
+  } else {
+    # if threshold specified
+    legendPal <- colorNumeric(rev(rasCols), mapProjVals, na.color='transparent')
+    rasPal <- colorNumeric(rasCols, mapProjVals, na.color='transparent')
+    map %>% removeControl("proj") %>%
+      addLegend("bottomright", pal = legendPal, title = "Predicted Suitability<br>(Projected)",
+                values = mapProjVals, layerId = 'proj', labFormat = reverseLabels(2, reverse_order=TRUE))
+    
+  }
+  # map model prediction raster and projection polygon
+  sharedExt <- rbind(polyPjXY, occs()[c("longitude", "latitude")])
+  map %>% 
+    clearMarkers() %>% clearShapes() %>% removeImage('projRas') %>%
+    map_occs(occs(), customZoom = sharedExt) %>%
+    addRasterImage(mapProj(), colors = rasPal, opacity = 0.7,
+                   layerId = 'projRas', group = 'proj', method = "ngb") %>%
+    addPolygons(lng = polyPjXY[,1], lat = polyPjXY[,2], layerId = "projExt", 
+                fill = FALSE, weight = 4, color = "red", group = 'proj') %>%
+    # add background polygon
+    mapBgPolys(bgShpXY())
+  
+  # create new spatial polygon from coordinates
+  newPoly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(polyPjXY)), 
+                                                   ID = spp[[curSp()]]$polyPjID)))
+  if (rgeos::gIntersects(newPoly, bgExt())) {
+    map %>% 
+      removeImage('mapPred') %>% 
+      removeControl('train')
+    }
+}
+
+projectTime_INFO <- infoGenerator(modName = "Project to New Time", 
+                                  modAuts = "Jamie M. Kass, Bruno Vilela, Gonzalo Pinilla, Robert P. Anderson", 
+                                  pkgName = "dismo")

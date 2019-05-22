@@ -6,28 +6,46 @@ removeByID_UI <- function(id) {
   )
 }
 
-removeByID_MOD <- function(input, output, session, rvs) {
+removeByID_MOD <- function(input, output, session) {
   reactive({
-    if (is.null(rvs$occs)) {
-      rvs %>% writeLog(type = 'error', "Before processing occurrences, 
-                       obtain the data in component 1.")
-      return()
+    # FUNCTION CALL ####
+    occs.rem <- c2_removeByID(occs(), 
+                              input$removeID, 
+                              shinyLogs)
+    req(occs.rem)
+    
+    # LOAD INTO SPP ####
+    spp[[curSp()]]$occs <- occs.rem
+    
+    # METADATA ####
+    # if no removeIDs are recorded yet, make a list to record them
+    # if at least one exists, add to the list
+    if(is.null(rmm()$code$wallaceSettings$removedIDs)) {
+      spp[[curSp()]]$rmm$code$wallaceSettings$removedIDs <- input$removeID
+    } else {
+      spp[[curSp()]]$rmm$code$wallaceSettings$removedIDs <- c(rmm()$code$wallaceSettings$removedIDs, input$removeID)
     }
     
-    if (!(input$removeID %in% rvs$occs$occID)) {
-      rvs %>% writeLog(type = 'error','Entered ID not found.')
-      return()
-    }
-    
-    # find row number relating to ID
-    i <- which(input$removeID == rvs$occs$occID)  # find which row name corresponds to user selection for removal
-    # remove the row
-    occs.remID <- rvs$occs[-i,]
-    # record all removed ids
-    rvs$removedIDs <- c(rvs$removedIDs, input$removeID)
-    
-    rvs %>% writeLog("Removed occurrence with ID = ", input$removeID, 
-                     ". Updated data has n = ", nrow(rvs$occs), " records.")
-    return(occs.remID)
+    return(occs.rem)
   })
 }
+
+removeByID_MAP <- function(map, session) {
+  map %>% leaflet.extras::removeDrawToolbar() %>%
+    clearAll() %>%
+    addCircleMarkers(data = occs(), lat = ~latitude, lng = ~longitude, 
+                     radius = 5, color = 'red', fill = TRUE, fillColor = "red", 
+                     fillOpacity = 0.2, weight = 2, popup = ~pop) %>%
+    zoom2Occs(occs())
+  print("remoccs")
+    
+}
+
+removeByID_INFO <- infoGenerator(modName = "Remove Occurrences By ID",
+                                 modAuts = "Jamie M. Kass, Robert P. Anderson",
+                                 pkgName = NULL)
+
+removeByID_RMD <- function(sp) {
+  list(removeByID_id = spp[[sp]]$rmm$code$wallaceSettings$removedIDs)
+}
+

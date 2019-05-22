@@ -3,69 +3,90 @@ wcBioclims_UI <- function(id) {
   ns <- NS(id)
   tagList(
     tags$div(title='Approximate lengths at equator: 10 arcmin = ~20 km, 5 arcmin = ~10 km, 2.5 arcmin = ~5 km, 30 arcsec = ~1 km. Exact length varies based on latitudinal position.',
-             selectInput(ns("bcRes"), label = "Select WorldClim bioclimatic variable resolution",
-                choices = list("Select resolution" = "",
-                               "30 arcsec" = 0.5,
-                               "2.5 arcmin" = 2.5,
-                               "5 arcmin" = 5,
-                               "10 arcmin" = 10))),
-    checkboxInput(ns("bcSelChoice"), label = "Specify variables to use in analysis?"),
+             selectInput(ns("wcRes"), label = "Select WorldClim bioclimatic variable resolution",
+                         choices = list("Select resolution" = "",
+                                        "30 arcsec" = 0.5,
+                                        "2.5 arcmin" = 2.5,
+                                        "5 arcmin" = 5,
+                                        "10 arcmin" = 10), selected = 10)), # Check default (No selected parameter)
+    checkboxInput(ns("doBrick"), label = "Save to memory for faster processing?", value = T), # Check default (value = FALSE)
+    checkboxInput(ns("bcSelChoice"), label = "Specify variables to use in analysis?", 
+                  value = TRUE),
     conditionalPanel(paste0("input['", ns("bcSelChoice"), "']"),
-                     checkboxGroupInput(ns("bcSels"), label = "Select",
+                     checkboxGroupInput(ns("bcSel"), label = "Select",
                                         choices = setNames(as.list(paste0('bio', 1:19)), paste0('bio', 1:19)), 
-                                        inline=TRUE, selected = paste0('bio', 1:19)))
-    
+                                        inline = TRUE, selected = paste0('bio', 1:19))),
+    checkboxInput(ns("batch"), label = strong("Batch"), value = T) # Check default (value = FALSE)
   )
 }
 
-wcBioclims_MOD <- function(input, output, session, logs, mapCntr, envs) {
+wcBioclims_MOD <- function(input, output, session) {
   reactive({
-    if (is.null(rvs$occs)) {
-      rvs %>% writeLog(type = 'error', "Before obtaining environmental variables, 
-                       obtain occurrence data in component 1.")
-      return()
-    }
-    if (input$bcRes == '') {
-      rvs %>% writeLog(type = 'error', 'Select a raster resolution.')
+    # ERRORS ####
+    if (is.null(occs())) {
+      shinyLogs %>% writeLog(type = 'error', "Before obtaining environmental variables, 
+                        obtain occurrence data in component 1.")
       return()
     }
     
-    # record for RMD
-    rvs$bcRes <- input$bcRes
-    rvs$bcSels <- input$bcSels
+    # FUNCTION CALL ####
+    wcbc <- c3_worldclim(input$wcRes, input$bcSel, mapCntr(), input$doBrick, shinyLogs)
+    req(wcbc)
     
-    withProgress(message = "Retrieving WorldClim data...", {
-      if (input$bcRes == 0.5) {
-        wcbc <- raster::getData(name = "worldclim", var = "bio", res = input$bcRes, 
-                                lon = mapCntr()[1], lat = mapCntr()[2])
-        rvs$bcLon <- mapCntr()[1]
-        rvs$bcLat <- mapCntr()[2]
-        # delete id tile (_*) from names for 30 sec rasters
-        i <- grep('_', names(wcbc))
-        editNames <- sapply(strsplit(names(wcbc)[i], '_'), function(x) x[1])
-        names(wcbc)[i] <- editNames
-        rvs$bcSels[i] <- editNames
-        wcbc <- wcbc[[input$bcSels]]
-      } else {
-        wcbc <- raster::getData(name = "worldclim", var = "bio", res = input$bcRes)
-        wcbc <- wcbc[[input$bcSels]]
-      }
-    })
+    envs.global[["wcbc"]] <- wcbc
     
-    if (raster::nlayers(wcbc) == 19) {
-      bcSels <- 'bio1-19'
-    } else {
-      bcSels <- paste(names(wcbc), collapse = ", ")
+    # loop over all species if batch is on
+    if(input$batch == TRUE) spLoop <- allSp() else spLoop <- curSp()
+    
+    # PROCESSING ####
+    for(sp in spLoop) {
+      # get environmental variable values per occurrence record
+      withProgress(message = paste0("Extracting environmental values for occurrences of ", spName(sp), "..."), {
+        occs.xy <- spp[[sp]]$occs[c('longitude', 'latitude')]
+        occsEnvsVals <- as.data.frame(raster::extract(wcbc, occs.xy))
+      })
+      # remove occurrence records with NA environmental values
+      spp[[sp]]$occs <- remEnvsValsNA(spp[[sp]]$occs, occsEnvsVals, shinyLogs)
+      # also remove variable value rows with NA environmental values
+      occsEnvsVals <- na.omit(occsEnvsVals)
+      
+      # LOAD INTO SPP ####
+      # add reference to WorldClim bioclim data
+      spp[[sp]]$envs <- "wcbc"
+      # add columns for env variable values for each occurrence record
+      spp[[sp]]$occs <- cbind(spp[[sp]]$occs, occsEnvsVals)
+      
+      # METADATA ####
+      spp[[sp]]$rmm$data$environment$variableNames <- names(wcbc)
+      spp[[sp]]$rmm$data$environment$yearMin <- 1960
+      spp[[sp]]$rmm$data$environment$yearMax <- 1990
+      spp[[sp]]$rmm$data$environment$resolution <- paste(round(raster::res(wcbc)[1] * 60, digits = 2), "degrees")
+      spp[[sp]]$rmm$data$environment$extent <- 'global'
+      spp[[sp]]$rmm$data$environment$sources <- 'WorldClim 1.4'
+      
+      spp[[sp]]$rmm$wallaceSettings$wcRes <- input$wcRes
+      spp[[sp]]$rmm$wallaceSettings$bcSel <- input$bcSel
+      spp[[sp]]$rmm$wallaceSettings$mapCntr <- mapCntr()
+      spp[[sp]]$rmm$wallaceSettings$wcBrick <- input$doBrick
     }
-    logs %>% writeLog("Environmental predictors: WorldClim bioclimatic variables",
-                      bcSels, "at", input$bcRes, " arcmin resolution.")
-    
-    # change names if bio01 is bio1, and so forth
-    i <- grep('bio[0-9]$', names(wcbc))
-    editNames <- paste('bio', sapply(strsplit(names(wcbc)[i], 'bio'), function(x) x[2]), sep='0')
-    names(wcbc)[i] <- editNames
-    rvs$bcSels[i] <- editNames
-    
-    return(wcbc)
   })
+}
+
+wcBioclims_MAP <- function(map, session) {
+  map %>% clearAll() %>%     
+    addCircleMarkers(data = occs(), lat = ~latitude, lng = ~longitude, 
+                     radius = 5, color = 'red', fill = TRUE, fillColor = "red", 
+                     fillOpacity = 0.2, weight = 2, popup = ~pop)
+}
+
+worldclim_INFO <- infoGenerator(modName = "WorldClim Bioclims",
+                                modAuts = "Jamie M. Kass, 
+                                Gonzalo E. Pinilla-Buitrago, Robert P. Anderson",
+                                pkgName = "raster")
+
+worldclim_RMD <- function(sp) {
+  list(wcRes = spp[[sp]]$rmm$wallaceSettings$wcRes,
+       bcSel = printVecAsis(spp[[sp]]$rmm$wallaceSettings$bcSel),
+       mapCntr = printVecAsis(spp[[sp]]$rmm$wallaceSettings$mapCntr),
+       wcBrick = spp[[sp]]$rmm$wallaceSettings$wcBrick)
 }

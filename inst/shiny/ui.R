@@ -1,399 +1,844 @@
-source("funcs/functions.R", local = TRUE)
-# load modules
-for (f in list.files('./modules')) {
-  source(file.path('modules', f), local=TRUE)
-}
-
-# Define UI for application
-shinyUI(tagList(
+tagList(
   shinyjs::useShinyjs(),
-  navbarPage(theme=shinythemes::shinytheme('united'), id='tabs', collapsible=TRUE,
-             title='Wallace',
-             tabPanel("Intro", value=0),
-             tabPanel("1 Occ Data", value=1),
-             tabPanel("2 Process Occs", value=2),
-             tabPanel("3 Env Data", value=3),
-             tabPanel("4 Process Envs", value=4),
-             tabPanel("5 Partition Occs", value=5),
-             tabPanel("6 Model", value=6),
-             tabPanel("7 Visualize", value=7),
-             tabPanel("8 Project", value=8),
-             tabPanel("Session Code", value='rmd'),
-             
-             fluidRow(column(4,
-                             wellPanel(
-                               includeCSS("css/styles.css"),
-                               includeScript("js/scroll.js"),
-                               conditionalPanel("input.tabs == 0",
-                                                #actionButton('load', 'HACK'),
-                                                includeMarkdown("Rmd/text_intro_tab.Rmd")
-                               ),
-                               # COMPONENT 1 ####
-                               conditionalPanel("input.tabs == 1",
-                                                h4("Obtain Occurrence Data"),
-                                                radioButtons("occSel", "Modules Available:",
-                                                             choices = list("Query Database" = 'db', "User-specified" = 'user'),
-                                                             selected = 'db'),
-                                                HTML('<hr>'),
-                                                conditionalPanel("input.occSel == 'db'",
-                                                                 div('Module: Query Database', id="mod"),
-                                                                 uiTop('spocc', 'Interface to Species Occurrence Data Sources'),
-                                                                 HTML('<hr>'),
-                                                                 queryDb_UI('c1_queryDb'),
-                                                                 actionButton("goDbOccs", "Query Database"), br(), br(),
-                                                                 HTML('<hr>'),
-                                                                 strong("Download database occurrence localities (.csv)"), br(), br(),
-                                                                 downloadButton('dlDbOccs', "Download"),
-                                                                 HTML('<hr>'),
-                                                                 uiBottom("Jamie M. Kass, Bruno Vilela, Robert P. Anderson", 'spocc', "Scott Chamberlain, Karthik Ram, Ted Hart")
-                                                ),
-                                                conditionalPanel("input.occSel == 'user'",
-                                                                 div('Module: User-specified Occurrences', id="mod"),
-                                                                 HTML('<hr>'),
-                                                                 userOccs_UI('c1_userOccs'),
-                                                                 actionButton("goUserOccs", "Load Occurrences"),
-                                                                 HTML('<hr>'),
-                                                                 div('Module Developers: Jamie M. Kass, Bruno Vilela, Robert P. Anderson', id="pkgDes")
-                                                )
-                               ),
-                               # COMPONENT 2 ####
-                               conditionalPanel("input.tabs == 2",
-                                                h4("Process Occurrence Data"),
-                                                radioButtons("procOccSel", "Modules Available:",
-                                                             choices = list("Select Occurrences On Map" = 'selOccs',
-                                                                            "Remove Occurrences By ID" = 'remID',
-                                                                            "Spatial Thin" = 'spthin')),
-                                                HTML('<hr>'),
-                                                conditionalPanel("input.procOccSel == 'selOccs'",
-                                                                 div('Module: Select Occurrences On Map', id="mod"),
-                                                                 uiTop('leaflet.extras', "Extra functionality for 'leaflet' Package"),
-                                                                 HTML('<hr>'),
-                                                                 selectOccs_UI('c2_selectOccs'),
-                                                                 strong("Select occurrences intersecting drawn polygon"), br(),
-                                                                 "(", HTML("<font color='blue'><b>NOTE</b></font>"), 
-                                                                 ': to begin drawing, click hexagon icon on map toolbar, 
-                                                                 and when complete, press "Finish" and then the "Select Occurrences" button)', br(), br(),
-                                                                 actionButton("goSelectOccs", "Select Occurrences")
-                                                ),
-                                                conditionalPanel("input.procOccSel == 'remID'",
-                                                                 div('Module: Remove Occurrences By ID', id="mod"),
-                                                                 HTML('<hr>'),
-                                                                 removeByID_UI('c2_removeByID'),
-                                                                 actionButton("goRemoveByID", "Remove Occurrence")
-                                                ),
-                                                # placeholder for select on map
-                                                conditionalPanel("input.procOccSel == 'spthin'",
-                                                                 div('Module: Spatial Thin', id="mod"),
-                                                                 uiTop('spThin', 'Spatial Thinning of Species Occurrence Records'),
-                                                                 HTML('<hr>'),
-                                                                 thinOccs_UI('c2_thinOccs'),
-                                                                 actionButton("goThinOccs", "Thin Occurrences")
-                                                ), br(),
-                                                strong("Reset to original occurrences"), br(), br(),
-                                                actionButton("goResetOccs", "Reset"),
-                                                HTML('<hr>'),
-                                                strong("Download processed occurrence localities (.csv)"), br(), br(),
-                                                downloadButton('dlProcOccs', "Download"),
-                                                HTML('<hr>'),
-                                                conditionalPanel("input.procOccSel == 'selOccs'",
-                                                                 uiBottom("Jamie M. Kass, Robert P. Anderson", 'leaflet.extras', 'Bhaskar Karambelkar, Bangyou Zheng')),
-                                                conditionalPanel("input.procOccSel == 'remID'",
-                                                                 uiBottom("Jamie M. Kass, Robert P. Anderson")),
-                                                conditionalPanel("input.procOccSel == 'spthin'",
-                                                                 uiBottom("Jamie M. Kass, Matthew E. Aiello-Lammens, Robert P. Anderson", 'spThin', "Matthew E. Aiello-Lammens, Rob A. Boria, 
-                                                                                          Alex Radosavljevic, Bruno Vilela, Robert P. Anderson"),
-                                                                 " | ", a("software note", href="http://onlinelibrary.wiley.com/doi/10.1111/ecog.01132/abstract", target = "_blank"))
-                               ),
-                               # COMPONENT 3 ####
-                               conditionalPanel("input.tabs == 3",
-                                                h4("Obtain Environmental Data"),
-                                                radioButtons("envDataSel", "Modules Available:",
-                                                             choices = list("WorldClim Bioclims" = 'wcbc',
-                                                                            "User-specified" = 'user')),
-                                                HTML('<hr>'),
-                                                conditionalPanel("input.envDataSel == 'wcbc'",
-                                                                 div('Module: WorldClim Bioclims', id="mod"),
-                                                                 uiTop('raster', 'Geographic Data Analysis and Modeling'),
-                                                                 HTML('<hr>'),
-                                                                 wcBioclims_UI("c3_wcBioclims"),
-                                                                 strong("Using map center coordinates as reference for tile download."),
-                                                                 textOutput('ctrLatLon'), br(),
-                                                                 actionButton("goEnvData", "Load Env Data")
-                                                ),
-                                                conditionalPanel("input.envDataSel == 'user'",
-                                                                 div('Module: User-specified Environmental Data', id="mod"),
-                                                                 HTML('<hr>'),
-                                                                 userEnvs_UI('c3_userEnvs'),
-                                                                 actionButton('goUserEnvs', 'Load Env Data')
-                                                ),
-                                                # br(), br(),
-                                                # strong("Download environmental predictors"), br(), br(),
-                                                # downloadButton('dlEnvs', "Download"),
-                                                HTML('<hr>'),
-                                                uiBottom("Jamie M. Kass, Gonzalo E. Pinilla-Buitrago, Robert P. Anderson", 'raster', "Robert J. Hijmans, Jacob van Etten, Joe Cheng, Matteo Mattiuzzu, 
-                                                         Michael Sumner, Jonathan A. Greenberg, Oscar Perpinan Lamigueriro, Andrew Bevan, 
-                                                         Etienne B. Racine, Ashton Shortridge"),
-                                                " | ", a("WorldClim", href="http://worldclim.org", target="_blank")
-                                                
-                               ),
-                               # COMPONENT 4 ####
-                               conditionalPanel("input.tabs == 4",
-                                                h4("Process Environmental Data"),
-                                                radioButtons("envProcSel", "Modules Available:",
-                                                             choices = list("Select Study Region" = "bgSel",
-                                                                            "User-specified" = "bgUser")),
-                                                
-                                                HTML('<hr>'),
-                                                conditionalPanel("input.envProcSel == 'bgSel'",
-                                                                 div('Module: Select Study Region', id="mod"),
-                                                                 uiTop('sp', 'Title Classes and Methods for Spatial Data'),
-                                                                 uiTop('rgeos', 'Interface to Geometry Engine - Open Source (GEOS)'),
-                                                                 HTML('<hr>'),
-                                                                 div("Step 1:", id="step"), div("Choose Background Extent", id="stepText"), br(), br(),
-                                                                 bgExtent_UI('c4_bgExtent'),
-                                                                 actionButton("goBgExt", "Select")),
-                                                conditionalPanel("input.envProcSel == 'bgUser'",
-                                                                 div('Module: User-specified Study Region', id="mod"),
-                                                                 div("Step 1:", id="step"), div("Choose Background Extent", id="stepText"), br(), br(),
-                                                                 userBgExtent_UI('c4_userBgExtent'),
-                                                                 actionButton("goUserBg", "Load")),
-                                                conditionalPanel("input.envProcSel == 'bgSel' | input.envProcSel == 'bgUser'",
-                                                                 HTML('<hr>'),
-                                                                 div("Step 2:", id="step"), div("Sample Background Points", id="stepText"), br(), br(),
-                                                                 strong('Mask predictor rasters by background extent and sample background points'), br(), br(),
-                                                                 bgMskAndSamplePts_UI('c4_bgMskAndSamplePts'),
-                                                                 actionButton("goBgMask", "Sample"), br(), br(),
-                                                                 HTML('<hr>'),
-                                                                 selectInput('bgMskFileType', label = "Select download file type",
-                                                                             choices = list("GRD" = 'raster', "ASCII" = 'ascii', "GeoTIFF" = 'GTiff')),
-                                                                 strong("Download predictor rasters masked to background extent"), br(), br(),
-                                                                 downloadButton('dlMskEnvs', "Download"),
-                                                                 HTML('<hr>'),
-                                                                 uiBottom("Jamie M. Kass, Bruno Vilela, Robert P. Anderson", 'sp', "Edzer Pebesma, Roger Bivand, Barry Rowlingson, Virgilio Gomez-Rubio,
-                                                                          Robert Hijmans, Michael Sumner, Don MacQueen, Jim Lemon, Josh O\'Brien"), br(),
-                                                                 uiBottom(NULL, 'rgeos', "Roger Bivand, Colin Rundel, Edzer Pebesma, Karl Ove Hufthammer"))
-                                                
-                               ),
-                               # COMPONENT 5 ####
-                               conditionalPanel("input.tabs == 5",
-                                                h4("Partition Occurrence Data"),
-                                                radioButtons("partSel", "Modules Available:",
-                                                             choices = list("Non-spatial Partition" = 'nsp',
-                                                                            "Spatial Partition" = 'sp')),
-                                                HTML('<hr>'),
-                                                conditionalPanel("input.partSel == 'sp'",
-                                                                 div('Module: Spatial Partition', id="mod"),
-                                                                 uiTop('ENMeval', 'Automated Runs and Evaluations of Ecological Niche Models'),
-                                                                 HTML('<hr>'),
-                                                                 partSp_UI('c5_partSp'),
-                                                                 actionButton("goPartSp", "Partition")),
-                                                conditionalPanel("input.partSel == 'nsp'",
-                                                                 div('Module: Non-spatial Partition', id="mod"),
-                                                                 uiTop('ENMeval', 'Automated Runs and Evaluations of Ecological Niche Models'),
-                                                                 HTML('<hr>'),
-                                                                 partNsp_UI('c5_partNsp'),
-                                                                 actionButton("goPartNsp", "Partition")),
-                                                HTML('<hr>'),
-                                                strong("Download occurrence and background localities with partition values (.csv)"), br(), br(),
-                                                downloadButton('dlPart', "Download"),
-                                                HTML('<hr>'),
-                                                uiBottom("Jamie M. Kass, Bruno Vilela, Robert P. Anderson", 'ENMeval', 'Robert Muscarella, Peter J. Galante, Mariano Soley-Guardia, Robert A. Boria,
-                                                                           Jamie M. Kass, Maria Uriarte, Robert P. Anderson'),
-                                                " | ", a("software note", href="http://onlinelibrary.wiley.com/doi/10.1111/2041-210X.12261/abstract", target = "_blank")
-                               ),
-                               # COMPONENT 6 ####
-                               conditionalPanel("input.tabs == 6",
-                                                h4("Build and Evaluate Niche Model"),
-                                                radioButtons("enmSel", "Modules Available:",
-                                                             choices = list("BIOCLIM", "Maxent")),
-                                                HTML('<hr>'),
-                                                conditionalPanel("input.enmSel == 'Maxent'",
-                                                                 div('Module: Maxent', id="mod"),
-                                                                 uiTop('ENMeval', 'Automated Runs and Evaluations of Ecological Niche Models using Maxent GUI (Java)'),
-                                                                 uiTop('dismo', 'Species Distribution Modeling'),
-                                                                 uiTop('maxnet', "Fitting 'Maxent' Species Distribution Models with 'glmnet'"),
-                                                                 HTML('<hr>'),
-                                                                 htmlOutput('maxentJar'), br(),
-                                                                 "(", HTML("<font color='blue'><b>NOTE</b></font>"), 
-                                                                 ": see module guidance for troubleshooting tips if you are experiencing problems.)",
-                                                                 HTML('<hr>'),
-                                                                 maxent_UI('c6_maxent'),
-                                                                 actionButton('goMaxent', 'Run')),
-                                                conditionalPanel("input.enmSel == 'BIOCLIM'",
-                                                                 div('Module: BIOCLIM', id="mod"),
-                                                                 uiTop('ENMeval', 'Automated Runs and Evaluations of Ecological Niche Models'),
-                                                                 uiTop('dismo', 'Species Distribution Modeling'),
-                                                                 HTML('<hr>'),
-                                                                 bioclim_UI('c6_bioclim'),
-                                                                 actionButton('goBioclim', 'Run')),
-                                                HTML('<hr>'),
-                                                downloadButton('dlEvalTbl', "Download CSV"),
-                                                HTML('<hr>'),
-                                                uiBottom("Jamie M. Kass, Gonzalo E. Pinilla-Buitrago, Robert Muscarella, Bruno Vilela, Robert P. Anderson", 'ENMeval', 'Robert Muscarella, Peter J. Galante, Mariano Soley-Guardia, Robert A. Boria,
-                                                         Jamie M. Kass, Maria Uriarte, Robert P. Anderson'),
-                                                " | ", a("software note", href="http://onlinelibrary.wiley.com/doi/10.1111/2041-210X.12261/abstract", target = "_blank"), br(),
-                                                uiBottom(NULL, 'dismo', 'Robert J. Hijmans, Steven Phillips, John Leathwick, Jane Elith'), br(),
-                                                uiBottom(NULL, 'maxnet', 'Steven Phillips')
-                               ),
-                               # COMPONENT 7 ####
-                               conditionalPanel("input.tabs == 7", 
-                                                h4("Visualize Model Results"),
-                                                radioButtons("visSel", "Modules Available:",
-                                                             choices = list("BIOCLIM Envelope Plots" = 'bcPlots',
-                                                                            "Maxent Evaluation Plots" = 'mxEval',
-                                                                            "Plot Response Curves" = 'response',
-                                                                            "Map Prediction" = 'map')),
-                                                HTML('<hr>'),
-                                                conditionalPanel("input.visSel == 'bcPlots'",
-                                                                 div('Module: BIOCLIM Envelope Plots', id="mod"),
-                                                                 uiTop('dismo', 'Species Distribution Modeling'),
-                                                                 HTML('<hr>'),
-                                                                 bcPlots_UI('c7_bcPlots')),
-                                                conditionalPanel("input.visSel == 'mxEval'",
-                                                                 div('Module: Maxent Evaluation Plots', id="mod"),
-                                                                 uiTop('ENMeval', 'Automated Runs and Evaluations of Ecological Niche Models'),
-                                                                 uiTop('dismo', 'Species Distribution Modeling'),
-                                                                 HTML('<hr>'),
-                                                                 mxEvalPlots_UI('c7_mxEvalPlots')),
-                                                conditionalPanel("input.visSel == 'response'",
-                                                                 div('Module: Response Curves', id="mod"),
-                                                                 uiTop('dismo', 'Species Distribution Modeling'),
-                                                                 HTML('<hr>'),
-                                                                 respPlots_UI('c7_respPlots')),
-                                                conditionalPanel("input.visSel == 'map'",
-                                                                 div('Module: Map Prediction', id="mod"),
-                                                                 uiTop('dismo', 'Species Distribution Modeling'),
-                                                                 HTML('<hr>'),
-                                                                 conditionalPanel("input.enmSel == 'Maxent'", mapPredsMaxent_UI('c7_mapPredsMaxent')), 
-                                                                 conditionalPanel("input.enmSel != 'Maxent'", mapPreds_UI('c7_mapPreds')),
-                                                                 actionButton("goMapPreds", "Plot"), br(), br(),
-                                                                 HTML('<hr>'),
-                                                                 selectInput('predFileType', label = "Select download file type",
-                                                                             choices = list("GRD" = 'raster', "ASCII" = 'ascii', 
-                                                                                            "GeoTIFF" = 'GTiff', "PNG" = "png")),
-                                                                 strong("Download displayed raster"), br(), br(),
-                                                                 downloadButton('dlPred', "Download")),
-                                                HTML('<hr>'),
-                                                conditionalPanel("input.visSel == 'mxEval'",
-                                                                 uiBottom("Jamie M. Kass, Robert Muscarella, Bruno Vilela, Robert P. Anderson", 'ENMeval', 'Robert Muscarella, Peter J. Galante, Mariano Soley-Guardia, Robert A. Boria,
-                                                         Jamie M. Kass, Maria Uriarte, Robert P. Anderson'),
-                                                                 " | ", a("software note", href="http://onlinelibrary.wiley.com/doi/10.1111/2041-210X.12261/abstract", target = "_blank"), br()
-                                                ),
-                                                conditionalPanel("input.visSel != 'mxEval'",
-                                                                 uiBottom("Jamie M. Kass, Gonzalo E. Pinilla-Buitrago, Bruno Vilela, Robert P. Anderson")
-                                                ),
-                                                uiBottom(NULL, 'dismo', 'Robert J. Hijmans, Steven Phillips, John Leathwick, Jane Elith')
-                               ),
-                               # COMPONENT 8 ####
-                               conditionalPanel("input.tabs == 8",
-                                                h4("Project Model"),
-                                                radioButtons("projSel", "Modules Available:",
-                                                             choices = list("Project to New Extent" = 'projArea',
-                                                                            "Project to New Time" = 'projTime',
-                                                                            "Calculate Environmental Similarity" = 'mess'),
-                                                             selected = 'projArea'),
-                                                HTML('<hr>'),
-                                                conditionalPanel("input.projSel == 'projArea'",
-                                                                 div('Module: Project to New Extent', id="mod"),
-                                                                 uiTop('dismo', 'Species Distribution Modeling'),
-                                                                 HTML('<hr>'),
-                                                                 strong("Project model to current extent"), br(), br(),
-                                                                 actionButton('goProjectArea', "Project"), br(), br(),
-                                                                 projectArea_UI('c8_projectArea')),
-                                                conditionalPanel("input.projSel == 'projTime'",
-                                                                 div('Module: Project to New Time', id="mod"),
-                                                                 uiTop('dismo', 'Species Distribution Modeling'),
-                                                                 HTML('<hr>'),
-                                                                 projectTime_UI('c8_projectTime'),
-                                                                 strong("Project model to new time for current extent"), br(), br(),
-                                                                 actionButton('goProjectTime', "Project")),
-                                                conditionalPanel("input.projSel == 'mess'",
-                                                                 div('Module: Calculate Environmental Similarity', id="mod"),
-                                                                 uiTop('dismo', 'Species Distribution Modeling'),
-                                                                 HTML('<hr>'),
-                                                                 envSimilarity_UI('c8_envSimilarity'),
-                                                                 strong("Calculate MESS for current extent"), br(), br(),
-                                                                 actionButton('goEnvSimilarity', "Calculate MESS")),
-                                                strong("Reset projection extent"), br(), br(),
-                                                actionButton("goResetProj", "Reset"),
-                                                HTML('<hr>'),
-                                                selectInput('projFileType', label = "Select download file type",
-                                                            choices = list("GRD" = 'raster', "ASCII" = 'ascii', "GeoTIFF" = 'GTiff',
-                                                                           "PNG" = "png")),
-                                                strong("Download displayed raster"), br(), br(),
-                                                downloadButton('dlProj', "Download"),
-                                                HTML('<hr>'),
-                                                uiBottom("Jamie M. Kass, Gonzalo E. Pinilla-Buitrago, Bruno Vilela, Robert P. Anderson", 'dismo', 'Robert J. Hijmans, Steven Phillips, John Leathwick, Jane Elith')
-                               ),
-                               # SESSION CODE ####
-                               conditionalPanel("input.tabs == 'rmd'",
-                                                h4("Download Session Code"),
-                                                HTML('<hr>'),
-                                                uiTop('rmarkdown', 'Dynamic Documents for R'),
-                                                uiTop('knitr', 'A General-Purpose Package for Dynamic Report Generation in R'),
-                                                HTML('<hr>'),
-                                                selectInput('rmdFileType', label = "Select download file type",
-                                                            choices = list("Rmd", "PDF", "HTML", "Word")),
-                                                downloadButton('dlRMD', 'Download Session Code'),
-                                                HTML('<hr>'),
-                                                uiBottom("Jamie M. Kass, Gonzalo E. Pinilla-Buitrago, Bruno Vilela, Robert P. Anderson", 'rmarkdown', 'JJ Allaire, Joe Cheng, Yihui Xie, Jonathan McPherson, 
-                                                       Winston Chang, Jeff Allen, Hadley Wickham, Aron Atkins, Rob Hyndman, Ruben Arslan'), br(),
-                                                uiBottom(NULL, 'knitr', 'Yihui Xie')
-                               )
-                             )),
-                      # RESULTS WINDOW ####
-                      column(8,
-                             conditionalPanel("input.tabs != 0 & input.tabs != 'rmd'",
-                                              div(id = "wallaceLog", class = "scrollbox", htmlOutput("log")),
-                                              absolutePanel(top = -10, right = 20, width = 150, draggable = TRUE,
-                                                            selectInput("bmap", "Change Base Map", 
-                                                                        choices = c('ESRI Topo'="Esri.WorldTopoMap",
-                                                                                    'Stamen Terrain'="Stamen.Terrain",
-                                                                                    'Open Topo'="OpenTopoMap",
-                                                                                    'ESRI Imagery'="Esri.WorldImagery",
-                                                                                    'ESRI Nat Geo'='Esri.NatGeoWorldMap'),
-                                                                        selected = "Esri.WorldTopoMap")),
-                                              absolutePanel(top = 60, right = 20, width = 150, draggable = TRUE,
-                                                            uiOutput("modSelUI")),
-                                              absolutePanel(top = 60, right = 180, width = 150, draggable = TRUE,
-                                                            uiOutput("envSelUI"))
-                             ),
-                             br(),
-                             conditionalPanel("input.tabs != 'rmd' & input.tabs != 0",
-                                              tabsetPanel(id = 'main',
-                                                          tabPanel('Map', leaflet::leafletOutput("map", height=600)),
-                                                          tabPanel('Occs Tbl', br(), br(), DT::dataTableOutput('occTbl')),
-                                                          tabPanel('Results', 
-                                                                   conditionalPanel("input.tabs == 3", verbatimTextOutput('envsPrint')),
-                                                                   conditionalPanel("input.tabs == 6", uiOutput('evalTbls')),
-                                                                   conditionalPanel("input.tabs == 7 && input.visSel == 'response'",
-                                                                                    imageOutput('respPlots')),
-                                                                   conditionalPanel("input.tabs == 7 && input.visSel == 'bcPlots' && input.enmSel == 'BIOCLIM'",
-                                                                                    imageOutput('bcEnvelPlot')),
-                                                                   conditionalPanel("input.tabs == 7 && input.visSel == 'mxEval'  && input.enmSel == 'Maxent'",
-                                                                                    imageOutput('mxEvalPlots'))
-                                                          ),
-                                                          tabPanel('Component Guidance', uiOutput('gtext_comp')),
-                                                          tabPanel('Module Guidance', uiOutput('gtext_mod'))
-                                              )
-                             ),
-                             conditionalPanel("input.tabs == 'rmd'",
-                                              column(8,
-                                                     includeMarkdown("Rmd/text_sessionCode.Rmd")
-                                              )
-                             ),
-                             conditionalPanel("input.tabs == 0",
-                                              tabsetPanel(id = 'introTabs',
-                                                          tabPanel('Intro', includeMarkdown("Rmd/text_intro.Rmd")),
-                                                          tabPanel('About',
-                                                                   fluidRow(
-                                                                     column(8, includeMarkdown("Rmd/text_about.Rmd")
-                                                                     )
-                                                                   )
-                                                          )
-                                              )
-                             )
-                      )
-             )
+  navbarPage(
+    theme = shinythemes::shinytheme('united'), id = 'tabs', collapsible = TRUE,
+    title = glue('Wallace v{packageVersion("wallace")}'),
+    tabPanel("Intro", value='intro'),
+    tabPanel("Occ Data", value='occs'),
+    tabPanel("Env Data", value='envs'),
+    tabPanel("Process Occs", value='poccs'),
+    tabPanel("Process Envs", value='penvs'),
+    # tabPanel("Sampling", value='samp'),
+    tabPanel("Env Space", value='espace'),
+    tabPanel("Partition Occs", value='part'),
+    tabPanel("Model", value='model'),
+    tabPanel("Visualize", value='vis'),
+    tabPanel("Project", value='proj'),
+    tabPanel("maskRangeR", value = 'post'),
+    tabPanel("Session Code", value='rmd'),
+
+    fluidRow(
+      column(
+        4,
+
+        wellPanel(
+          tags$link(href = "css/styles.css", rel = "stylesheet"),
+          tags$script(src = "js/scroll.js"),
+          conditionalPanel(
+            "input.tabs == 'intro'",
+            includeMarkdown("Rmd/text_intro_tab.Rmd")
+          ),
+          # OBTAIN OCCS ####
+          conditionalPanel(
+            "input.tabs == 'occs'",
+            h4("Obtain Occurrence Data"),
+            radioButtons(
+              "occsSel", "Modules Available:",
+              choices = list("Query Database (Present)" = 'dbOccs',
+                             "Query Database (Paleo)" = 'pdbOccs',
+                             "User-specified" = 'userOccs'),
+              selected = 'dbOccs'
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.occsSel == 'dbOccs'",
+              uiTop(queryDb_INFO),
+              queryDb_UI('c1_queryDb_uiID'),
+              actionButton("goDbOccs", "Query Database"), br(), br(),
+              tags$hr()
+            ),
+            conditionalPanel(
+              "input.occsSel == 'pdbOccs'",
+              uiTop(queryPaleoDb_INFO),
+              queryPaleoDb_UI('c1_queryPaleoDb_uiID'),
+              actionButton("goPaleoDbOccs", "Query Database"), br(), br(),
+              tags$hr()
+            ),
+            conditionalPanel(
+              "input.occsSel == 'userOccs'",
+              uiTop(userOccs_INFO),
+              userOccs_UI('c1_userOccs_uiID'),
+              actionButton("goUserOccs", "Load Occurrences"),
+              tags$hr()
+            ),
+            conditionalPanel(
+              "input.occsSel == 'dbOccs'",
+              uiBottom(queryDb_INFO)
+            ),
+            conditionalPanel(
+              "input.occsSel == 'pdbOccs'",
+              uiBottom(queryPaleoDb_INFO)
+            ),
+            conditionalPanel(
+              "input.occsSel == 'userOccs'",
+              uiBottom(userOccs_INFO)
+            )
+          ),
+          # OBTAIN ENVS ####
+          conditionalPanel(
+            "input.tabs == 'envs'",
+            h4("Obtain Environmental Data"),
+            radioButtons(
+              "envsSel", "Modules Available:",
+              choices = list("WorldClim Bioclims" = 'wcbc',
+                             "ecoClimate"= 'ecoClimate',
+                             "User-specified" = 'userEnvs')
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.envsSel == 'wcbc'",
+              uiTop(worldclim_INFO),
+              wcBioclims_UI("c3_wcBioclims_uiID"),
+              strong("Using map center coordinates as reference for tile download."),
+              textOutput('ctrLatLon'), br(),
+              actionButton("goEnvData", "Load Env Data")
+            ),
+            conditionalPanel(
+              "input.envsSel == 'ecoClimatelayers'",
+              uiTop(ecoclimate_INFO),
+              ecoClimate_UI("c3_ecoClimate_uiID"),
+              strong("ecoClimate layers have a resolution of 0.5 degrees"),
+              actionButton("goEcoClimData", "Load Env Data")
+            ),
+            conditionalPanel(
+              "input.envsSel == 'userEnvs'",
+              uiTop(userEnvs_INFO),
+              userEnvs_UI('c3_userEnvs_uiID'),
+              actionButton('goUserEnvs', 'Load Env Data')
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.envsSel == 'wcbc'",
+              uiBottom(worldclim_INFO)
+            ),
+            conditionalPanel(
+              "input.envsSel == 'ecoClimatelayers'",
+              uiBottom(ecoclimate_INFO)
+            ),
+            conditionalPanel(
+              "input.envsSel == 'userEnvs'",
+              uiBottom(userEnvs_INFO)
+            )
+          ),
+          # PROCESS OCCS ####
+          conditionalPanel(
+            "input.tabs == 'poccs'",
+            h4("Process Occurrence Data"),
+            radioButtons(
+              "procOccsSel", "Modules Available:",
+              # choices = list("Profile Occurrences" = "profOccs",
+              #                "Select Occurrences On Map" = 'selOccs',
+              choices = list("Select Occurrences On Map" = 'selOccs',
+                             "Remove Occurrences By ID" = 'remID',
+                             "Spatial Thin" = 'spthin'),
+              selected = "spthin" # Check default (no selected)
+            ),
+            tags$hr(),
+            # conditionalPanel("input.procOccsSel == 'profOccs'",
+            #                  # uiTop(profileOccs_INFO),
+            #                  actionButton("goProfileOccs", "Profile Occurrences"), br(), br(),
+            #                  profileOccs_UI('c2_profileOccs_uiID'),
+            #                  actionButton("goProfileOccsClean", "Clean Occurrences")
+            # ),
+            conditionalPanel(
+              "input.procOccsSel == 'selOccs'",
+              uiTop(selectOccs_INFO),
+              selectOccs_UI('c2_selectOccs_uiID'),
+              strong("Select occurrences intersecting drawn polygon"), br(),
+              "(", HTML("<font color='blue'><b>NOTE</b></font>"),
+              ': to begin drawing, click hexagon icon on map toolbar,
+                                            and when complete, press "Finish" and then the "Select Occurrences" button)', br(), br(),
+              actionButton("goSelectOccs", "Select Occurrences")
+          ),
+          conditionalPanel(
+            "input.procOccsSel == 'remID'",
+            uiTop(removeByID_INFO),
+            removeByID_UI('c2_removeByID_uiID'),
+            actionButton("goRemoveByID", "Remove Occurrence")
+          ),
+          # placeholder for select on map
+          conditionalPanel(
+            "input.procOccsSel == 'spthin'",
+            uiTop(thinOccs_INFO),
+            thinOccs_UI('c2_thinOccs_uiID'),
+            actionButton("goThinOccs", "Thin Occurrences")
+          ), br(),
+          strong("Reset to original occurrences"), br(),
+          actionButton("goResetOccs", "Reset", class = 'butResOccs'),
+          tags$head(tags$style(".butResOccs {background-color: #C51E10;
+                               color: white;
+                               padding: 5px 5px;
+                               border: none;}
+                               .butResOccs:hover {background-color: #830D03;
+                               color: white;}")),
+          tags$hr(),
+          conditionalPanel(
+            "input.procOccsSel == 'selOccs'",
+            uiBottom(selectOccs_INFO)
+          ),
+          conditionalPanel(
+            "input.procOccsSel == 'remID'",
+            uiBottom(removeByID_INFO)
+          ),
+          conditionalPanel(
+            "input.procOccsSel == 'spthin'",
+            uiBottom(thinOccs_INFO)
+          )
+          ),
+          # PROCESS ENVS ####
+          conditionalPanel(
+            "input.tabs == 'penvs'",
+            h4("Process Environmental Data"),
+            radioButtons(
+              "procEnvsSel", "Modules Available:",
+              choices = list("Select Study Region" = "bgSel",
+                             "User-specified" = "bgUser",
+                             "Draw polygon(**)" = "bgDraw")
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.procEnvsSel == 'bgSel'",
+              uiTop(bgExtent_INFO),
+              div("Step 1:", id="step"), div("Choose Background Extent", id="stepText"), br(), br(),
+              bgExtent_UI('c4_bgExtent_uiID'),
+              actionButton("goBgExt", "Select"), br(), br()#,
+            ),
+            conditionalPanel(
+              "input.procEnvsSel == 'bgUser'",
+              uiTop(userBgExtent_INFO),
+              div("Step 1:", id="step"), div("Choose Background Extent", id="stepText"), br(), br(),
+              userBgExtent_UI('c4_userBgExtent'),
+              actionButton("goUserBg", "Load")),
+            conditionalPanel(
+              "input.procEnvsSel == 'bgDraw'",
+              uiTop(drawBgExtent_INFO),
+              div("Step 1:", id="step"), div("Draw Background Extent(**)", id="stepText"), br(), br(),
+              drawBgExtent_UI('c4_drawBgExtent'),
+              actionButton("goDrawBg", "Create(**)")),
+            conditionalPanel(
+              "input.procEnvsSel == 'bgSel' | input.procEnvsSel == 'bgUser' | input.procEnvsSel == 'bgDraw'",
+              tags$hr(),
+              div("Step 2:", id="step"), div("Sample Background Points", id="stepText"), br(), br(),
+              strong('Mask predictor rasters by background extent and sample background points'), br(), br(),
+              bgMskAndSamplePts_UI('c4_bgMskAndSamplePts'),
+              actionButton("goBgMask", "Sample")
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.procEnvsSel == 'bgSel'",
+              uiBottom(bgExtent_INFO)
+            ),
+            conditionalPanel(
+              "input.procEnvsSel == 'bgUser'",
+              uiBottom(userBgExtent_INFO)
+            ),
+            conditionalPanel(
+              "input.procEnvsSel == 'bgDraw'",
+              uiBottom(drawBgExtent_INFO)
+            )
+          ),
+          # SAMPLING BIAS ####
+          conditionalPanel(
+            "input.tabs == 'samp'",
+            h4("Accounting for Sampling Bias"),
+            radioButtons(
+              "samplingBias", "Modules Available:",
+              choices = list("User-specified" = "biasBgUser",
+                             "Make Target Group" = "biasBgMake",
+                             #"Sampling Covariates" = "sampCov",
+                             "Bias Surface" = "biasFile")
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.samplingBias == 'bgUserTarget'",
+              #uiTop(bgExtent_INFO),
+              div("Upload custom background", id="stepText"), br(), br(),
+              userBiasBg_UI('samp_biasBG_uiID'),
+              actionButton("goUserBiasBgUpload", "Select"), br(), br()#,
+            ),
+            conditionalPanel(
+              "input.samplingBias == 'biasBgMake'",
+              #uiTop(bgExtent_INFO),
+              div("Step 1:", id="step"), div("Specify Target Group Species", id="stepText"), br(), br(),
+              queryDb_UI('samp_queryDb_uiID'),
+              actionButton("goTargetDbOccs", "Query Database"), br(), br()#,
+            ),
+            # Placeholder not implemented yet
+            # conditionalPanel("input.samplingBias == 'sampCov'",
+            #                  #uiTop(userBgExtent_INFO),
+            #                  div("Step 1:", id="step"), div("Choose Background Extent", id="stepText"), br(), br(),
+            #                  userBgExtent_UI('c4_userBgExtent'),
+            #                  actionButton("goUserBg", "Load")),
+            conditionalPanel(
+              "input.samplingBias == 'biasFile'",
+              #uiTop(drawBgExtent_INFO),
+              div("Upload Bias File", id="stepText"), br(), br(),
+              userBiasFile_UI('samp_biasFileUpload'),
+              actionButton("goBiasFileUpload", "Upload")
+            ),
+            tags$hr()
+            #conditionalPanel("input.procEnvsSel == 'bgTarget'", uiBottom(bgExtent_INFO)),
+            #conditionalPanel("input.procEnvsSel == 'sampCov'", uiBottom(userBgExtent_INFO)),
+            #conditionalPanel("input.procEnvsSel == 'biasSurf'", uiBottom(drawBgExtent_INFO))
+          ),
+          # ESPACE ####
+          conditionalPanel("input.tabs == 'espace'",
+                           h4("Environmental Space"),
+                           radioButtons("espaceSel", "Modules Available:",
+                                        choices = list("Principal Components Analysis" = "pca",
+                                                       "Occurrence Density Grid" = "occDens",
+                                                       "Niche Overlap" = "nicheOv",
+                                                       #begin change: we added Pearson's to the list here
+                                                       "Pearson's Correlation Coefficient" ="modCorr")),
+                           #end change
+                           HTML('<hr>'),
+                           conditionalPanel("input.espaceSel == 'pca'",
+                                            uiTop(espace_pca_INFO),
+                                            pca_controlsUI('cEspace_PCA_uiID'),
+                                            actionButton("goPCA", "Run")
+                           ),
+                           conditionalPanel("input.espaceSel == 'occDens'",
+                                            uiTop(espace_occDens_INFO),
+                                            occDens_controlsUI('cEspace_occDens_uiID'),
+                                            actionButton("goOccDens", "Run")
+                           ),
+                           conditionalPanel("input.espaceSel == 'nicheOv'",
+                                            uiTop(espace_nicheOv_INFO),
+                                            nicheOv_controlsUI('cEspace_nicheOv_uiID'),
+                                            actionButton("goNicheOv", "Run")
+
+                           ),
+                           #begin change: we added a conditional panel for our module here
+                           conditionalPanel("input.espaceSel == 'mod.Corr'",
+                                            uiTop(espace_Corr_INFO),
+                                            runCorr_UI('cEspace_runCorr_uiID'),
+                                            actionButton("goRunCorr", "Run")
+                           ),
+                           #end change
+                           HTML('<hr>'),
+                           conditionalPanel("input.espaceSel == 'pca'", uiBottom(espace_pca_INFO)),
+                           conditionalPanel("input.espaceSel == 'occDens'", uiBottom(espace_occDens_INFO)),
+                           conditionalPanel("input.espaceSel == 'nicheOv'", uiBottom(espace_nicheOv_INFO)),
+                           #begin change
+                           conditionalPanel("input.espaceSel == 'modCorr'", uiBottom(espace_Corr_INFO))
+                           #end change
+          ),
+          # PARTITION ####
+          conditionalPanel(
+            "input.tabs == 'part'",
+            h4("Partition Occurrence Data"),
+            radioButtons(
+              "partSel", "Modules Available:",
+              choices = list("Non-spatial Partition" = 'nsp',
+                             "Spatial Partition" = 'sp'),
+              selected = 'sp' # Check default (no selected)
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.partSel == 'sp'",
+              uiTop(partitionSpat_INFO),
+              partitionSpat_UI('cParts_partitionSpat_uiID'),
+              actionButton("goPartitionSpat", "Partition")),
+            conditionalPanel(
+              "input.partSel == 'nsp'",
+              uiTop(partitionNonSpat_INFO),
+              partitionNonSpat_UI('cParts_partitionNonSpat_uiID'),
+              actionButton("goPartitionNonSpat", "Partition")),
+            tags$hr(),
+            conditionalPanel(
+              "input.partSel == 'sp'",
+              uiBottom(partitionSpat_INFO)
+            ),
+            conditionalPanel(
+              "input.partSel == 'nsp'",
+              uiBottom(partitionNonSpat_INFO)
+            )
+          ),
+          # MODEL ####
+          conditionalPanel(
+            "input.tabs == 'model'",
+            h4("Build and Evaluate Niche Model"),
+            radioButtons(
+              "modelSel", "Modules Available:",
+              choices = list("BIOCLIM", "Maxent", "GAM"),
+              selected = "Maxent" # Check default (no selected)
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.modelSel == 'Maxent'",
+              uiTop(runMaxent_INFO),
+              htmlOutput('maxentJar'), br(),
+              "(", HTML("<font color='blue'><b>NOTE</b></font>"),
+              ": see module guidance for troubleshooting tips if you are experiencing problems.)",
+              tags$hr(),
+              runMaxent_UI('runMaxent_uiID'),
+              actionButton('goMaxent', 'Run')
+            ),
+            conditionalPanel(
+              "input.modelSel == 'BIOCLIM'",
+              uiTop(runBIOCLIM_INFO),
+              runBIOCLIM_UI('runBIOCLIM_uiID'),
+              actionButton('goBIOCLIM', 'Run')
+            ),
+            conditionalPanel(
+              "input.modelSel == 'GAM'",
+              uiTop(runGAM_INFO),
+              runGAM_UI('runGAM_uiID'),
+              actionButton('goGAM', 'Run')
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.modelSel == 'Maxent'",
+              uiBottom(runMaxent_INFO)
+            ),
+            conditionalPanel(
+              "input.modelSel == 'BIOCLIM'",
+              uiBottom(runBIOCLIM_INFO)
+            ),
+            conditionalPanel(
+              "input.modelSel == 'GAM'",
+              uiBottom(runGAM_INFO)
+            )
+          ),
+          # VISUALIZE ####
+          conditionalPanel(
+            "input.tabs == 'vis'",
+            h4("Visualize Model Results"),
+            radioButtons(
+              "visSel", "Modules Available:",
+              choices = list("BIOCLIM Envelope Plots" = 'bioclimPlot',
+                             "Maxent Evaluation Plots" = 'maxentEval',
+                             "Plot Response Curves" = 'response',
+                             "Map Prediction" = 'mapPreds'),
+              selected = 'mapPreds' # Check default (no selected param)
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.visSel == 'bioclimPlot'",
+              uiTop(bioclimPlot_INFO),
+              bioclimPlot_UI('c7_bioclimPlot')
+            ),
+            conditionalPanel(
+              "input.visSel == 'maxentEval'",
+              uiTop(maxentEvalPlot_INFO),
+              maxentEvalPlot_UI('c7_maxentEvalPlot')
+            ),
+            conditionalPanel(
+              "input.visSel == 'response'",
+              uiTop(responsePlot_INFO),
+              responsePlot_UI('c7_responsePlot')
+            ),
+            conditionalPanel(
+              "input.visSel == 'mapPreds'",
+              uiTop(mapPreds_INFO),
+              mapPreds_UI('c7_mapPreds'),
+              actionButton("goMapPreds", "Plot"), br()
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.visSel == 'bioclimPlot'",
+              uiBottom(bioclimPlot_INFO)
+            ),
+            conditionalPanel(
+              "input.visSel == 'maxentEval'",
+              uiBottom(maxentEvalPlot_INFO)
+            ),
+            conditionalPanel(
+              "input.visSel == 'response'",
+              uiBottom(responsePlot_INFO)
+            ),
+            conditionalPanel(
+              "input.visSel == 'mapPreds'",
+              uiBottom(mapPreds_INFO)
+            )
+          ),
+          # PROJECT ####
+          conditionalPanel(
+            "input.tabs == 'proj'",
+            h4("Project Model"),
+            radioButtons(
+              "projSel", "Modules Available:",
+              choices = list("Project to New Extent" = 'projArea',
+                             "Project to New Time" = 'projTime',
+                             "Calculate Environmental Similarity" = 'mess'),
+              selected = 'projArea'
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.projSel == 'projArea'",
+              uiTop(projectArea_INFO),
+              projectArea_UI('c8_projectArea'),
+              strong("Project model to current extent (red)"), br(),
+              actionButton('goProjectArea', "Project")
+            ),
+            conditionalPanel(
+              "input.projSel == 'projTime'",
+              uiTop(projectTime_INFO),
+              projectTime_UI('c8_projectTime'),
+              strong("Project model to new time for current extent (red)"), br(),
+              actionButton('goProjectTime', "Project")
+            ),
+            conditionalPanel(
+              "input.projSel == 'mess'",
+              uiTop(envSimilarity_INFO),
+              envSimilarity_UI('c8_envSimilarity'),
+              strong("Calculate MESS for current extent"), br(), br(),
+              actionButton('goEnvSimilarity', "Calculate MESS")
+            ),
+            br(),
+            strong("Reset projection extent"), br(),
+            actionButton("goResetProj", "Reset", class = 'butResPj'),
+            tags$head(tags$style(".butResPj {background-color: #C51E10;
+                                 color: white;
+                                 padding: 1px 1px;
+                                 border: none;}
+                                 .butResPj:hover {background-color: #830D03;
+                                 color: white;}")),
+            tags$hr(),
+            conditionalPanel(
+              "input.projSel == 'projArea'",
+              uiBottom(projectArea_INFO)
+            ),
+            conditionalPanel(
+              "input.projSel == 'projTime'",
+              uiBottom(projectTime_INFO)
+            ),
+            conditionalPanel(
+              "input.projSel == 'mess'",
+              uiBottom(envSimilarity_INFO)
+            )
+          ),
+          # POST PROCESING ####
+          conditionalPanel(
+            "input.tabs == 'post'",
+            h4("Post-processing(**)"),
+            radioButtons(
+              "postSel", "Modules Available:",
+              choices = list("User SDM(**)" = 'userSdmPost',
+                             "Olinguito(**)" = 'olinPost',
+                             "Biomodelos(**)" = 'biomPost',
+                             "Multimask(**)" = 'multPost',
+                             "SVM(**)" = 'svmPost'),
+              selected = 'olinPost'
+            ),
+            tags$hr(),
+            conditionalPanel(
+              "input.postSel == 'userSdmPost'",
+              uiTop(userSDM_INFO),
+              uiOutput("userSDM_UI"),
+              tags$hr()
+            ),
+            conditionalPanel(
+              "input.postSel == 'olinPost'",
+              uiTop(olinguito_INFO),
+              tags$hr()
+            ),
+            conditionalPanel(
+              "input.postSel == 'biomPost'",
+              uiTop(biomodelos_INFO),
+              tags$hr()
+            ),
+            conditionalPanel(
+              "input.postSel == 'multPost'",
+              uiTop(multilayers_INFO),
+              tags$hr()
+            ),
+            conditionalPanel(
+              "input.postSel == 'svmPost'",
+              uiTop(SVM_INFO),
+              tags$hr()
+            ),
+            conditionalPanel(
+              "input.postSel == 'userSdmPost'",
+              uiBottom(userSDM_INFO)
+            ),
+            conditionalPanel(
+              "input.postSel == 'olinPost'",
+              uiBottom(olinguito_INFO)
+            ),
+            conditionalPanel(
+              "input.postSel == 'biomPost'",
+              uiBottom(biomodelos_INFO)
+            ),
+            conditionalPanel(
+              "input.postSel == 'multPost'",
+              uiBottom(multilayers_INFO)
+            ),
+            conditionalPanel(
+              "input.postSel == 'svmPost'",
+              uiBottom(SVM_INFO)
+            )
+          ),
+          # SESSION CODE ####
+          conditionalPanel(
+            "input.tabs == 'rmd'",
+            h4("Download Session Code"),
+            uiTop(rmd_INFO),
+            selectInput('rmdFileType', label = "Select download file type",
+                        choices = list("Rmd", "PDF", "HTML", "Word")),
+            downloadButton('dlRMD', 'Download Session Code'),
+            tags$hr(),
+            downloadButton('dlRMM', 'Download Metadata'),
+            tags$hr(),
+            uiBottom(rmd_INFO)
+          )
+        )
+      ),
+      # --- RESULTS WINDOW ---
+      column(
+        8,
+        conditionalPanel(
+          "input.tabs != 'intro' & input.tabs != 'rmd'",
+          fixedRow(
+            column(
+              4,
+              absolutePanel(
+                uiOutput("curSpUI"),
+                uiOutput("curModelUI")
+              )
+            ),
+            #uiOutput("curEnvUI"))),
+            column(
+              2,
+              offset = 1,
+              align = "left",
+              div(id = "wallaceLog",
+                  class = "scrollbox",
+                  htmlOutput("log"))
+            ),
+            tags$head(tags$style(".leaflet-top {z-index:999!important;}")
+            )
+          )
+        ),
+        br(),
+        conditionalPanel(
+          "input.tabs != 'rmd' & input.tabs != 'intro'",
+          tabsetPanel(
+            id = 'main',
+            tabPanel(
+              'Map',
+              leaflet::leafletOutput("map", height = 700),
+              absolutePanel(
+                top = 160, right = 20, width = 150, draggable = TRUE,
+                selectInput("bmap", "",
+                            choices = c('ESRI Topo' = "Esri.WorldTopoMap",
+                                        'Stamen Terrain' = "Stamen.Terrain",
+                                        'Open Topo' = "OpenTopoMap",
+                                        'ESRI Imagery' = "Esri.WorldImagery",
+                                        'ESRI Nat Geo' = 'Esri.NatGeoWorldMap'),
+                            selected = "Esri.WorldTopoMap"
+                )
+              )
+            ),
+            tabPanel(
+              'Table', br(),
+              DT::dataTableOutput('occTbl')
+            ),
+            tabPanel(
+              'Results',
+              conditionalPanel(
+                "input.tabs == 'envs'",
+                verbatimTextOutput('envsPrint')
+              ),
+              # conditionalPanel("input.tabs == 'poccs'",
+              #                  profileOccs_resultsUI("c2_profileOccs_uiID")),
+              conditionalPanel(
+                "input.tabs == 'model'",
+                uiOutput('evalTbls')
+              ),
+              conditionalPanel(
+                "input.tabs == 'vis' && input.visSel == 'response'",
+                imageOutput('responsePlot')
+              ),
+              conditionalPanel(
+                "input.tabs == 'vis' && input.visSel == 'bioclimPlot' && input.modelSel == 'BIOCLIM'",
+                imageOutput('bioclimPlot')
+              ),
+              conditionalPanel(
+                "input.tabs == 'vis' && input.visSel == 'maxentEval' && input.modelSel == 'Maxent'",
+                imageOutput('maxentEvalPlot')
+              ),
+              conditionalPanel(
+                "input.tabs == 'espace' && input.espaceSel == 'pca'",
+                pca_resultsUI("cEspace_PCA_uiID")
+              ),
+              conditionalPanel(
+                "input.tabs == 'espace' && input.espaceSel == 'occDens'",
+                occDens_resultsUI("cEspace_occDens_uiID")
+              ),
+              conditionalPanel(
+                "input.tabs == 'espace' && input.espaceSel == 'nicheOv'",
+                nicheOv_resultsUI("cEspace_nicheOv_uiID")
+              )
+            ),
+            tabPanel(
+              'Component Guidance',
+              uiOutput('gtext_component')
+            ),
+            tabPanel(
+              'Module Guidance',
+              uiOutput('gtext_module')
+            ),
+            tabPanel(
+              'Download',
+              conditionalPanel(
+                "input.tabs == 'occs'",
+                br(),
+                fluidRow(
+                  column(3, h5("Download original occurrence data")),
+                  column(2, downloadButton('dlDbOccs', "CVS file"))
+                ),
+                br(),
+                fluidRow(
+                  column(3, h5("Download current table")),
+                  column(2, downloadButton('dlOccs', "CVS file"))
+                ),
+                br(),
+                fluidRow(
+                  column(3, h5("Download all data")),
+                  column(2, downloadButton('dlAllOccs', "CVS file"))
+                )
+              ),
+              conditionalPanel(
+                "input.tabs == 'poccs'",
+                br(),
+                fluidRow(
+                  column(3, h5("Download processed occurence table")),
+                  column(2, downloadButton('dlProcOccs', "CVS file"))
+                )
+              ),
+              conditionalPanel(
+                "input.tabs == 'envs'",
+                br(),
+                fluidRow(
+                  column(3, h5("No download data available in this component"))
+                )
+              ),
+              conditionalPanel(
+                "input.tabs == 'penvs'",
+                br(),
+                fluidRow(
+                  column(3, h5("Download shapefile of background extent")),
+                  column(2, downloadButton('dlBgShp', "ZIP file"))
+                ),
+                br(),
+                fluidRow(
+                  column(3, h5("Download predictor rasters masked to background extent (Select download file type)")),
+                  column(2, selectInput('bgMskFileType',
+                                        label = NULL,
+                                        choices = list("GeoTIFF" = 'GTiff',
+                                                       "GRD" = 'raster',
+                                                       "ASCII" = 'ascii'))),
+                  column(2, downloadButton('dlMskEnvs', "ZIP file"))
+                ),
+                br(),
+                fluidRow(
+                  column(3, h5("Download sample background points")),
+                  column(2, downloadButton('dlBgPts', "CVS file"))
+                )
+              ),
+              conditionalPanel(
+                "input.tabs == 'part'",
+                br(),
+                fluidRow(
+                  column(3, h5("Download occurrence and background localities with partition values")),
+                  column(2, downloadButton('dlPart', "CVS file"))
+                )
+              ),
+              conditionalPanel(
+                "input.tabs == 'model'",
+                br(),
+                fluidRow(
+                  column(3, h5("Download evaluation table")),
+                  column(2, downloadButton('dlEvalTbl', "CSV file"))
+                )
+              ),
+              conditionalPanel(
+                "input.tabs == 'vis'",
+                br(),
+                conditionalPanel(
+                  "input.modelSel == 'BIOCLIM'",
+                  fluidRow(
+                    column(3, h5("Download Bioclim plot (**)")),
+                    column(2, downloadButton('dlVisBioclim', "PNG file"))
+                  )
+                ),
+                conditionalPanel(
+                  "input.modelSel == 'Maxent'",
+                  fluidRow(
+                    column(3, h5("Download Maxent plots (**)")),
+                    column(2, downloadButton('dlMaxentPlots', "ZIP file"))
+                  ),
+                  br(),
+                  fluidRow(
+                    column(3, h5("Download Response plots (**)")),
+                    column(2, downloadButton('dlRespCurves', "ZIP file"))
+                  )
+                ),
+                br(),
+                fluidRow(
+                  column(3, h5("Download current prediction (Select download file type**)")),
+                  column(2, selectInput('predFileType',
+                                        label = NULL,
+                                        choices = list("GeoTIFF" = 'GTiff',
+                                                       "GRD" = 'raster',
+                                                       "ASCII" = 'ascii',
+                                                       "PNG" = 'png'))),
+                  column(2, downloadButton('dlPred', "Predition file(**)"))
+                )
+              ),
+              conditionalPanel(
+                "input.tabs == 'proj'",
+                br(),
+                fluidRow(
+                  column(3, h5("Download projection (Select download file type**)")),
+                  column(2, selectInput('projFileType',
+                                        label = NULL,
+                                        choices = list("GeoTIFF" = 'GTiff',
+                                                       "GRD" = 'raster',
+                                                       "ASCII" = 'ascii',
+                                                       "PNG" = 'png'))),
+                  column(2, downloadButton('dlProj', "Projection file(**)"))
+                ),
+                fluidRow(
+                  column(3, h5("Download MESS (Select download file type**)")),
+                  column(2, selectInput('messFileType',
+                                        label = NULL,
+                                        choices = list("GeoTIFF" = 'GTiff',
+                                                       "GRD" = 'raster',
+                                                       "ASCII" = 'ascii',
+                                                       "PNG" = 'png'))),
+                  column(2, downloadButton('dlMess', "MESS file(**)"))
+                )
+              )
+            )
+
+          )
+        ),
+        conditionalPanel(
+          "input.tabs == 'rmd'",
+          column(8,
+                 includeMarkdown("Rmd/text_sessionCode.Rmd")
+          )
+        ),
+        conditionalPanel(
+          "input.tabs == 'intro'",
+          tabsetPanel(
+            id = 'introTabs',
+            tabPanel(
+              'Intro',
+              includeMarkdown("Rmd/text_intro.Rmd")
+            ),
+            tabPanel(
+              'About',
+              fluidRow(
+                column(8, includeMarkdown("Rmd/text_about.Rmd")
+                )
+              )
+            )
+          )
+        )
+      )
+    )
   )
-))
+)

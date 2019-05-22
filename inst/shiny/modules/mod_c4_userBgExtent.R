@@ -2,75 +2,76 @@
 userBgExtent_UI <- function(id) {
   ns <- NS(id)
   tagList(
-    fileInput(ns("userBgShp"), label = 'Upload polygon with field order: longitude, latitude (.csv)',
+    fileInput(ns("userBgShp"), label = 'Upload polygon in shapefile (.shp, .shx, .dbf) or CSV file with field order (longitude, latitude)',
               accept=c(".csv", ".dbf", ".shx", ".shp"), multiple = TRUE),
     tags$div(title='Buffer area in degrees (1 degree = ~111 km). Exact length varies based on latitudinal position.',
-             numericInput(ns("userBgBuf"), label = "Study region buffer distance (degree)", value = 0, min = 0, step = 0.5))
+             numericInput(ns("userBgBuf"), label = "Study region buffer distance (degree)", value = 0, min = 0, step = 0.5)),
+    checkboxInput(ns("batch"), label = strong("Batch"), value = FALSE)
   )
 }
 
-userBgExtent_MOD <- function(input, output, session, rvs) {
-  userBgShp <- reactive({
-    if (is.null(rvs$envs)) {
-      rvs %>% writeLog(type = 'error', 'Environmental variables missing. Obtain them
-                       in component 3.')
+userBgExtent_MOD <- function(input, output, session) {
+  reactive({
+    # ERRORS ####
+    if (is.null(envs())) {
+      shinyLogs %>% writeLog(type = 'error', 'Environmental variables missing. Obtain them
+                        in component 3.')
       return()
     }
     if (is.null(input$userBgShp)) {
-      rvs %>% writeLog(type = 'error', 'Background extent files not uploaded.')
+      shinyLogs %>% writeLog(type = 'error', 'Background extent files not uploaded.')
       return()
     }
+    # FUNCTION CALL ####
+    userBgExt <- c4_userBgExtent(input$userBgShp$datapath, input$userBgShp$name, input$userBgBuf, shinyLogs)
     
-    # record for RMD
-    rvs$comp4.buf <- input$userBgBuf
+    # loop over all species if batch is on
+    if(input$batch == TRUE) spLoop <- allSp() else spLoop <- curSp()
     
-    names <- input$userBgShp$name
-    inPath <- input$userBgShp$datapath
-    pathdir <- dirname(inPath)
-    pathfile <- basename(inPath)
-    # get extensions of all input files
-    exts <- sapply(strsplit(names, '\\.'), FUN=function(x) x[2])
-    
-    if (length(exts) == 1 & exts == 'csv') {
-      # record for RMD
-      rvs$comp4.shp <- 'csv'
-      f <- read.csv(inPath, header = TRUE)
+    # PROCESSING ####
+    for(sp in spLoop) {
+      # LOAD INTO SPP ####
+      spp[[sp]]$procEnvs$bgExt <- userBgExt
       
-      bgExt <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(f)), 1)))
-    } else if ('shp' %in% exts) {
-      if (length(exts) < 3) {
-        rvs %>% writeLog(type = 'error', 'If entering a shapefile, please select all the following files: .shp, .shx, .dbf.')
-        return()
+      # METADATA ####
+      # get extensions of all input files
+      exts <- sapply(strsplit(input$userBgShp$name, '\\.'), FUN=function(x) x[2])
+      if('csv' %in% exts) {
+        spp[[sp]]$rmm$code$wallaceSettings$userBgExt <- 'csv'
+        spp[[sp]]$rmm$code$wallaceSettings$userBgPath <- input$userBgShp$datapath
       }
-      file.rename(inPath, file.path(pathdir, names))
-      # get index of .shp
-      i <- which(exts == 'shp')
-      shpName <- strsplit(names[i], '\\.')[[1]][1]
-      # record for RMD
-      rvs$comp4.shp <- 'shp'
-      rvs$bgUserShpPar <- list(dsn=pathdir[i], layer=shpName)
-      # read in shapefile and extract coords
-      bgExt <- rgdal::readOGR(pathdir[i], shpName)
-    } else {
-      rvs %>% writeLog(type = 'error', 'Please enter either a CSV file of vertex coordinates or shapefile (.shp, .shx, .dbf).')
-      return()
+      else if('shp' %in% exts) {
+        spp[[sp]]$rmm$code$wallaceSettings$userBgExt <- 'shp'
+        # get index of .shp
+        i <- which(exts == 'shp')
+        shpName <- strsplit(input$userBgShp$name[i], '\\.')[[1]][1]
+        spp[[sp]]$rmm$code$wallaceSettings$userBgShpParams <- list(dsn=input$userBgShp$datapath[i], layer=shpName)
+      }
     }
-    rvs %>% writeLog("Study extent: user-defined polygon.")
-    return(bgExt)
   })
-  
-  bufBg <- reactive({
-    req(userBgShp())
-    
-    bufWid <- input$userBgBuf
-    if (bufWid > 0) {
-      bgExt <- rgeos::gBuffer(userBgShp(), width = bufWid)
-      rvs %>% writeLog('Study extent buffered by', bufWid, 'degrees.')
-    } else {
-      bgExt <- userBgShp()
-    }
-    return(bgExt)
-  })
-  
-  return(bufBg)
 }
+
+userBgExtent_MAP <- function(map, session) {
+  updateTabsetPanel(session, 'main', selected = 'Map')
+  if(is.null(bgExt())) {
+    map %>% clearAll() %>%     
+      addCircleMarkers(data = occs(), lat = ~latitude, lng = ~longitude, 
+                       radius = 5, color = 'red', fill = TRUE, fillColor = "red", 
+                       fillOpacity = 0.2, weight = 2, popup = ~pop)
+  }else{
+    map %>% clearAll() %>%
+      addCircleMarkers(data = occs(), lat = ~latitude, lng = ~longitude, 
+                       radius = 5, color = 'red', fill = TRUE, fillColor = "red", 
+                       fillOpacity = 0.2, weight = 2, popup = ~pop)
+    for(shp in bgShpXY()) {
+      map %>%
+        addPolygons(lng=shp[,1], lat=shp[,2], weight=4, color="gray", group='bgShp')
+    }
+    bb <- bgExt()@bbox
+    map %>% fitBounds(bb[1], bb[2], bb[3], bb[4])
+  }
+}
+
+userBgExtent_INFO <- infoGenerator(modName = "User-specified Study Region",
+                                   modAuts = "Jamie M. Kass, Bruno Vilela, Robert P. Anderson",
+                                   pkgName = NULL)
