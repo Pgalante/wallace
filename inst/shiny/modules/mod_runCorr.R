@@ -12,8 +12,7 @@
 runCorr_UI <- function(id) {
   ns <- NS(id)
   tagList(
-    checkboxInput(ns("pcaVarSel"), label = "Specify variables to use in analysis?"),
-    actionButton(ns("PearCorr"), "Calculate Pairwise Correlations"),
+ #   actionButton(ns("PearCorr"), "Calculate Pairwise Correlations"),
     uiOutput(ns("correls"))
   )
 }
@@ -24,7 +23,6 @@ runCorr_UI <- function(id) {
 # this function details the server logic (calculations, etc.)
 runCorr_MOD <- function(input, output, session) {
   reactive({
-    for(sp in spIn()) {
       # ERRORS ####
       # check to make sure background masking was done in "Process Envs" before proceeding. The reactive object can be accessed in the table above.
       if(is.null(spp[[curSp()]]$procEnvs$bgMask)) {
@@ -35,12 +33,12 @@ runCorr_MOD <- function(input, output, session) {
 
       # FUNCTION CALL ####
       # run the module function from /wallace/R
-      mod.Corr <- layerStats(sp[[sp()]]$procEnvs$bgMask, shinyLogs)
+      mod.Corr <- wallacelayerStats(x = spp[[curSp()]]$procEnvs$bgMask, asSample = TRUE, na.rm = FALSE, shinyLogs = shinyLogs)
       # ensure the model object was returned before proceeding
       req(mod.Corr)
 
       # LOAD INTO SPP ####
-      spp[[sp]]$correls <- mod.Corr
+      spp[[curSp]]$correls <- mod.Corr
 
       # METADATA ####
       #      spp[[sp]]$rmm$model$algorithm <- "GAM"
@@ -48,7 +46,7 @@ runCorr_MOD <- function(input, output, session) {
       #      f <- as.character(mod.gam$formula)
       #      spp[[sp]]$rmm$model$gam$formula <- paste(f[2],f[1],f[3])
       #      spp[[sp]]$rmm$model$gam$notes <- "gam package implementation"
-    }
+
   })
 }
 

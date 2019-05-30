@@ -727,7 +727,7 @@ function(input, output, session) {
   # module Correlation ####
   # # # # # # # # # # # #
   # assign module function to variable
-    mod.Corr <- callModule(runCorr_MOD, 'cEspace_runCorr_uiID')
+    modCorr <- callModule(runCorr_MOD, 'cEspace_runCorr_uiID')
     observeEvent(input$goRunCorr, {
     # initialize module
     mod.Corr()

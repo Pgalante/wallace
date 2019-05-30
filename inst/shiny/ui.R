@@ -309,7 +309,7 @@ tagList(
 
                            ),
                            #begin change: we added a conditional panel for our module here
-                           conditionalPanel("input.espaceSel == 'mod.Corr'",
+                           conditionalPanel("input.espaceSel == 'modCorr'",
                                             uiTop(espace_Corr_INFO),
                                             runCorr_UI('cEspace_runCorr_uiID'),
                                             actionButton("goRunCorr", "Run")
