@@ -263,9 +263,9 @@ Within this `observeEvent()` block, we will call our module with `shiny::callMod
 # # # # # # # # # # # # 
 observeEvent(input$goRunCorr, {
   # assign module function to variable
-  mod.Corr <- callModule(runCorr_MOD, 'cEspace_runCorr_uiID')
+  modCorr <- callModule(runCorr_MOD, 'cEspace_runCorr_uiID')
   # initialize module
-  mod.Corr()
+  modCorr()
   # make sure the results were entered before proceeding
   req(evalOut())
   # initialize Correlation matrix results table
