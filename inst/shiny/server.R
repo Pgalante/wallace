@@ -730,7 +730,7 @@ function(input, output, session) {
     modCorr <- callModule(runCorr_MOD, 'cEspace_runCorr_uiID')
     observeEvent(input$goRunCorr, {
     # initialize module
-    mod.Corr()
+    modCorr()
     # make sure the results were entered before proceeding
     req(evalOut())
     # initialize Correlation matrix results table
