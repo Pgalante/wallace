@@ -172,7 +172,7 @@ runCorr_MOD <- function(input, output, session) {
       req(mod.Corr)
       
       # LOAD INTO SPP ####
-      spp[[sp]]$results <- mod.Corr
+      spp[[curSp()]]$correls <- mod.Corr
       
       # METADATA ####
 #      spp[[sp]]$rmm$model$algorithm <- "GAM"
