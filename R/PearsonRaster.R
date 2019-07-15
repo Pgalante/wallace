@@ -33,7 +33,7 @@ wallacelayerStats <- function (x, asSample = TRUE, na.rm = FALSE, shinyLogs = NU
     return()
   }
   smartProgress(shinyLogs, message = "calculating pairwise Pearson's correlations",{
-    corrs <- layerStats(x, stat = "pearson")
+    corrs <- layerStats(x, stat = "pearson", na.rm = T)
   })
   shinyLogs %>% writeLog("Pearson complete")
   return(corrs)
