@@ -32,9 +32,9 @@ wallacelayerStats <- function (x, asSample = TRUE, na.rm = FALSE, shinyLogs = NU
     shinyLogs %>% writeLog("Please install the raster package before running.")
     return()
   }
-  smartProgress(shinyLogs, message = "calculating pairwise pearson's correlations",{
+  smartProgress(shinyLogs, message = "calculating pairwise Pearson's correlations",{
     corrs <- layerStats(x, stat = "pearson")
   })
-  shinyLogs %>% writeLog("pearson complete")
+  shinyLogs %>% writeLog("Pearson complete")
   return(corrs)
 }
