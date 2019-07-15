@@ -643,6 +643,10 @@ tagList(
               # conditionalPanel("input.tabs == 'poccs'",
               #                  profileOccs_resultsUI("c2_profileOccs_uiID")),
               conditionalPanel(
+                "input.tabs == 'espace'",
+                verbatimTextOutput('corrSummary')
+              ),
+              conditionalPanel(
                 "input.tabs == 'model'",
                 uiOutput('evalTbls')
               ),

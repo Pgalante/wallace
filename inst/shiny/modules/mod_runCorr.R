@@ -51,12 +51,12 @@ runCorr_MOD <- function(input, output, session) {
 }
 
 # this function specifies the visual output
-runCorr_TBL <- function(input, output, session) {
-  output$evalTbl <- renderUI({
-    output$corrSummary <- renderPrint(spp[[curSp()]]$correls)
-    verbatimTextOutput("corrSummary")
-  })
-}
+# runCorr_TBL <- function(input, output, session) {
+#   output$evalTbl <- renderUI({
+#     output$corrSummary <- renderPrint(spp[[curSp()]]$correls)
+#     verbatimTextOutput("corrSummary")
+#   })
+# }
 
 # this function specifies metadata used by ui.R
 espace_Corr_INFO <- infoGenerator(modName = "Pearson Correlation Coefficient",

@@ -732,13 +732,19 @@ function(input, output, session) {
     # initialize module
     modCorr()
     # make sure the results were entered before proceeding
-    req(evalOut())
+    # req(evalOut())
     # initialize Correlation matrix results table
-    runCorr_TBL(input, output, session)
+    #runCorr_TBL(input, output, session)
     # switch to Results tab
     updateTabsetPanel(session, 'main', selected = 'Results')
     # update radio buttons for Visualization component
     #updateRadioButtons(session, "curSp", selected = curSp())
+  })
+
+  # CONSOLE PRINT
+  output$corrSummary <- renderPrint({
+    req(spp[[curSp()]]$correls)
+    spp[[curSp()]]$correls
   })
 
   ################################################## #
