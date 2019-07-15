@@ -52,9 +52,9 @@ runCorr_MOD <- function(input, output, session) {
 
 # this function specifies the visual output
 runCorr_TBL <- function(input, output, session) {
-  output$evalTbls <- renderUI({
-    output$corrSummary <- renderPrint(summary(spp[[curSp()]]$results))
-    verbatimTextOutput("CorrSummary")
+  output$evalTbl <- renderUI({
+    output$corrSummary <- renderPrint(spp[[curSp()]]$correls)
+    verbatimTextOutput("corrSummary")
   })
 }
 
