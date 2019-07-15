@@ -1,18 +1,10 @@
 # filename: mod_runCorr.R
 
 # this function details the graphic user interface (UI) logic
-# runCorr_UI <- function(id) {
-#   ns <- NS(id)
-#   tagList(
-#     tags$div(title="Calculate pairwise Pearson's Correlation matrix for environmental predictors",
-#              actionButton(ns("PearCorr"), "Calculate Pairwise Correlations"))
-#   )
-# }
-
 runCorr_UI <- function(id) {
   ns <- NS(id)
   tagList(
- #   actionButton(ns("PearCorr"), "Calculate Pairwise Correlations"),
+    tags$div(title="Calculate pairwise Pearson's Correlation matrix for environmental predictors"),
     uiOutput(ns("correls"))
   )
 }

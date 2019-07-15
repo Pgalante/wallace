@@ -115,19 +115,22 @@ Thus, when the function is run inside *Wallace*, the parameter "shinyLogs" shoul
 Let's now write a function that calculates the Pearson correlations between variable pairs. Save the code below as a script to: `wallace/R/PearsonRaster.R`.
 
 ```{r}
-wallacelayerStats <- function (x, asSample = TRUE, na.rm = FALSE, shinyLogs = NULL) 
-{
+wallacelayerStats <- function (x, asSample = TRUE, na.rm = FALSE, shinyLogs = NULL){
   if(!require(raster)){
     shinyLogs %>% writeLog("Please install the raster package before running.")
     return()
   }
-    smartProgress(shinyLogs, message = "calculating pairwise pearson's correlations",{
-      corrs <- layerStats(x, stat = "pearson")
-    })
-    shinyLogs %>% writeLog("pearson complete")
-    return(corrs)
+  smartProgress(shinyLogs, message = "calculating pairwise Pearson's correlations",{
+    corrs <- layerStats(x, stat = "pearson", na.rm = T)
+  })
+  shinyLogs %>% writeLog("Pearson complete")
+  return(corrs)
 }
 ```
+
+<!-- CBM: why is na.rm an argument of the function? I added na.rm = T in layerStats() so the correlations could be calculated. -->
+
+<!-- CBM: Also, I think we need to add something about putting roxygen comments on this file -- seems like you need them so that the NAMESPACE includes the function. -->
 
 ### Step 2: Write a `shiny` module that calls your function
 
@@ -137,7 +140,7 @@ The function `runCorr_UI()` details the user interface (UI) controls. The argume
 
 The function `runCorr_MOD()` will be a wrapper for a shiny reactive expression. Inside, there is a template for the essential parts needed in a *Wallace* module. The first, "ERRORS", catches any possible errors before the module's core functionality is run. If there is an error, it writes a log message and then returns to `server.R`. The user will need to define these errors in order to catch them. Next, we call the function from `/wallace/R` and make sure it returns what we expect. Next, we load the model object into `spp`. Finally, we fill in the right metadata fields for the rangeModelMetadata object in `spp`. As shiny modules are in their own namespaces, if we want to refer to any of the results from the module in `server.R`, we need to put them into the `spp` reactiveValues list. Please note this below in the `runCorr_MOD()` function. 
 
-After `runCorr_MOD()`, the next function is `runCorr_TBL()`, which will be called in `server.R`. This function defines a custom UI with `shiny::renderUI()` that shows the model `summary()` output from the console, and assigns it to `output$evalTbls`, which is a built-in UI for model result displays. The final function is `runCorr_INFO()`, which includes information on the packages used in the module for the UI around the controls. It is called in `ui.R`. Other modules that plot onto the leaflet map have a "MAP" function as well (see queryDB.R for an example).
+After `runCorr_MOD()`, the final function is `runCorr_INFO()`, which includes information on the packages used in the module for the UI around the controls. It is called in `ui.R`. Other modules that plot onto the leaflet map have a "MAP" function as well (see queryDB.R for an example).
 
 Save the code below as a single script in `wallace/inst/shiny/modules/mod_runCorr.R`.
 
@@ -148,47 +151,31 @@ Save the code below as a single script in `wallace/inst/shiny/modules/mod_runCor
 runCorr_UI <- function(id) {
   ns <- NS(id)
   tagList(
-    tags$div(title="Calculate pairwise Pearson's Correlation matrix for environmental predictors",
-             numericInput(ns("PearCorr"), "Calculate Pairwise Correlations", value = 1))
+    tags$div(title="Calculate pairwise Pearson's Correlation matrix for environmental predictors"),
+    uiOutput(ns("correls"))
   )
 }
 
 # this function details the server logic (calculations, etc.)
 runCorr_MOD <- function(input, output, session) {
   reactive({
-    for(sp in curSp()) {
       # ERRORS ####
       # check to make sure background masking was done in "Process Envs" before proceeding. The reactive object can be accessed in the table above.
       if(is.null(spp[[curSp()]]$procEnvs$bgMask)) {
-        shinyLogs %>% writeLog(type = 'error', "Before calculating correlations, please mask 
+        shinyLogs %>% writeLog(type = 'error', "Before calculating correlations, please mask
                                environmental data for", curSp(), ".")
         return()
       }
-      
+
       # FUNCTION CALL ####
       # run the module function from /wallace/R
-      mod.Corr <- wallacelayerStats(spp[[curSp()]]$procEnvs$bgMask, shinyLogs)
+      mod.Corr <- wallacelayerStats(x = spp[[curSp()]]$procEnvs$bgMask, asSample = TRUE, na.rm = FALSE, shinyLogs = shinyLogs)
       # ensure the model object was returned before proceeding
       req(mod.Corr)
-      
+
       # LOAD INTO SPP ####
       spp[[curSp()]]$correls <- mod.Corr
-      
-      # METADATA ####
-#      spp[[sp]]$rmm$model$algorithm <- "GAM"
-#      spp[[sp]]$rmm$model$gam$family <- "binominal"
-#      f <- as.character(mod.gam$formula)
-#      spp[[sp]]$rmm$model$gam$formula <- paste(f[2],f[1],f[3])
-#      spp[[sp]]$rmm$model$gam$notes <- "gam package implementation"
-    }
-  })
-}
 
-# this function specifies the visual output
-runCorr_TBL <- function(input, output, session) {
-  output$evalTbls <- renderUI({
-    output$corrSummary <- renderPrint(summary(spp[[curSp()]]$results))
-    verbatimTextOutput("CorrSummary")
   })
 }
 
@@ -251,6 +238,102 @@ Please see the comments noting where we made changes to the original "Model" com
    )
 ```
 
+```{r}
+      # --- RESULTS WINDOW ---
+      column(
+        8,
+        conditionalPanel(
+          "input.tabs != 'intro' & input.tabs != 'rmd'",
+          fixedRow(
+            column(
+              4,
+              absolutePanel(
+                uiOutput("curSpUI"),
+                uiOutput("curModelUI")
+              )
+            ),
+            #uiOutput("curEnvUI"))),
+            column(
+              2,
+              offset = 1,
+              align = "left",
+              div(id = "wallaceLog",
+                  class = "scrollbox",
+                  htmlOutput("log"))
+            ),
+            tags$head(tags$style(".leaflet-top {z-index:999!important;}")
+            )
+          )
+        ),
+        br(),
+        conditionalPanel(
+          "input.tabs != 'rmd' & input.tabs != 'intro'",
+          tabsetPanel(
+            id = 'main',
+            tabPanel(
+              'Map',
+              leaflet::leafletOutput("map", height = 700),
+              absolutePanel(
+                top = 160, right = 20, width = 150, draggable = TRUE,
+                selectInput("bmap", "",
+                            choices = c('ESRI Topo' = "Esri.WorldTopoMap",
+                                        'Stamen Terrain' = "Stamen.Terrain",
+                                        'Open Topo' = "OpenTopoMap",
+                                        'ESRI Imagery' = "Esri.WorldImagery",
+                                        'ESRI Nat Geo' = 'Esri.NatGeoWorldMap'),
+                            selected = "Esri.WorldTopoMap"
+                )
+              )
+            ),
+            tabPanel(
+              'Table', br(),
+              DT::dataTableOutput('occTbl')
+            ),
+            tabPanel(
+              'Results',
+              conditionalPanel(
+                "input.tabs == 'envs'",
+                verbatimTextOutput('envsPrint')
+              ),
+              #begin change: we added the correlation summary to the results tab here
+              conditionalPanel(
+                "input.tabs == 'espace'",
+                verbatimTextOutput('corrSummary')
+              ),
+              # end change
+              conditionalPanel(
+                "input.tabs == 'model'",
+                uiOutput('evalTbls')
+              ),
+              conditionalPanel(
+                "input.tabs == 'vis' && input.visSel == 'response'",
+                imageOutput('responsePlot')
+              ),
+              conditionalPanel(
+                "input.tabs == 'vis' && input.visSel == 'bioclimPlot' && input.modelSel == 'BIOCLIM'",
+                imageOutput('bioclimPlot')
+              ),
+              conditionalPanel(
+                "input.tabs == 'vis' && input.visSel == 'maxentEval' && input.modelSel == 'Maxent'",
+                imageOutput('maxentEvalPlot')
+              ),
+              conditionalPanel(
+                "input.tabs == 'espace' && input.espaceSel == 'pca'",
+                pca_resultsUI("cEspace_PCA_uiID")
+              ),
+              conditionalPanel(
+                "input.tabs == 'espace' && input.espaceSel == 'occDens'",
+                occDens_resultsUI("cEspace_occDens_uiID")
+              ),
+              conditionalPanel(
+                "input.tabs == 'espace' && input.espaceSel == 'nicheOv'",
+                nicheOv_resultsUI("cEspace_nicheOv_uiID")
+              )
+            )
+```
+
+<!-- CBM: Not sure how much of that code we need to copy and paste in above, just wanted to show where the addition was -->
+
 ### Step 4: Modify `server.R`
 
 Finally, we need to call the module and the other functions from `mod_runCorr.R` in `server.R`. Open `server.R` and navigate to the ESPACE component. You should see "module Principle Components Analysis", "module Occurrence Density Grids", and "module Niche Overlap" code blocks, wrapped in `observeEvent()`. This `shiny` function initiates whatever is inside the block when an action is taken by the user, which in this case is a button press. The button we are observing is `input$goRunCorr`, which we just specified in `ui.R`. The `input$` part is needed to get entities defined in `ui.R` when we are in `server.R`. 
@@ -258,22 +341,25 @@ Finally, we need to call the module and the other functions from `mod_runCorr.R`
 Within this `observeEvent()` block, we will call our module with `shiny::callModule()`. We assign the reactive expression output to a variable, and then initialize it by running the module function on the next line. We do not assign the module initialization itself to a variable because this module has no output---all the data generated is internally added to the reactiveValues list `spp`. We then check to make sure the results were saved by initializing the reactive shortcut function `results()` (see Tbl. 2) and wrapping it in `req()`, which will throw an error if `results()` is empty. Next, we run our specialized table function, which displays the model results in the "Results" tab of the map window. Finally, we make some UI updates (which can only be made in `server.R`) to switch to the "Results" tab automatically to view the table, and to update the module selection in the next component to display only those relevant to GAMs (which for now is just "Map Prediction").
 
 ```{r}
-# # # # # # # # # # # # 
+# # # # # # # # # # # #
 # module Correlation ####
-# # # # # # # # # # # # 
+# # # # # # # # # # # #
+# assign module function to variable
+modCorr <- callModule(runCorr_MOD, 'cEspace_runCorr_uiID')
 observeEvent(input$goRunCorr, {
-  # assign module function to variable
-  modCorr <- callModule(runCorr_MOD, 'cEspace_runCorr_uiID')
   # initialize module
   modCorr()
-  # make sure the results were entered before proceeding
-  req(evalOut())
   # initialize Correlation matrix results table
-  runCorr_TBL(input, output, session)
   # switch to Results tab
   updateTabsetPanel(session, 'main', selected = 'Results')
   # update radio buttons for Visualization component
-  updateRadioButtons(session, "curSp", selected = curSp())
+  #updateRadioButtons(session, "curSp", selected = curSp())
+})
+
+# CONSOLE PRINT
+output$corrSummary <- renderPrint({
+  req(spp[[curSp()]]$correls)
+  spp[[curSp()]]$correls
 })
 ```
 

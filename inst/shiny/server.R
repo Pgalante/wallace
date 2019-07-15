@@ -731,10 +731,7 @@ function(input, output, session) {
     observeEvent(input$goRunCorr, {
     # initialize module
     modCorr()
-    # make sure the results were entered before proceeding
-    # req(evalOut())
     # initialize Correlation matrix results table
-    #runCorr_TBL(input, output, session)
     # switch to Results tab
     updateTabsetPanel(session, 'main', selected = 'Results')
     # update radio buttons for Visualization component
