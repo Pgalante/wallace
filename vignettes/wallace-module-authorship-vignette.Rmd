@@ -102,7 +102,7 @@ knitr::kable(df2)
 
 ## Module structure overview
 
-There are 5 necessary steps to adding a functional module: 1) write an R function, 2) write a `shiny` module that calls this R function, 3) modify `ui.R` to display your module's controls, 4) modify `server.R` to implement your module's functionality when these controls are used, and finally 5) write an R Markdown file that includes the guidance text for your module. The example we will go over is for a module that implements a generalized additive model (GAM). As *Wallace* currently focuses on models of species niches and distributions that lack absence data, this GAM will be binomial (predicting the probability of a binary outcome) and tailored to presence-only occurrence data, which means that instead of real absence data, we'll use background values instead (sometimes referred to as "pseudo-absences").
+There are 5 necessary steps to adding a functional module: 1) write an R function, 2) write a `shiny` module that calls this R function, 3) modify `ui.R` to display your module's controls, 4) modify `server.R` to implement your module's functionality when these controls are used, and finally 5) write an R Markdown file that includes the guidance text for your module. The example we will go over is for a module that calculates pairwise Pearson's correlation coefficients for all environmental data. 
 
 ### Step 1: Write an R function
 
@@ -338,7 +338,7 @@ Please see the comments noting where we made changes to the original "Model" com
 
 Finally, we need to call the module and the other functions from `mod_runCorr.R` in `server.R`. Open `server.R` and navigate to the ESPACE component. You should see "module Principle Components Analysis", "module Occurrence Density Grids", and "module Niche Overlap" code blocks, wrapped in `observeEvent()`. This `shiny` function initiates whatever is inside the block when an action is taken by the user, which in this case is a button press. The button we are observing is `input$goRunCorr`, which we just specified in `ui.R`. The `input$` part is needed to get entities defined in `ui.R` when we are in `server.R`. 
 
-Within this `observeEvent()` block, we will call our module with `shiny::callModule()`. We assign the reactive expression output to a variable, and then initialize it by running the module function on the next line. We do not assign the module initialization itself to a variable because this module has no output---all the data generated is internally added to the reactiveValues list `spp`. We then check to make sure the results were saved by initializing the reactive shortcut function `results()` (see Tbl. 2) and wrapping it in `req()`, which will throw an error if `results()` is empty. Next, we run our specialized table function, which displays the model results in the "Results" tab of the map window. Finally, we make some UI updates (which can only be made in `server.R`) to switch to the "Results" tab automatically to view the table, and to update the module selection in the next component to display only those relevant to GAMs (which for now is just "Map Prediction").
+Within this `observeEvent()` block, we will call our module with `shiny::callModule()`. We assign the reactive expression output to a variable, and then initialize it by running the module function on the next line. We do not assign the module initialization itself to a variable because this module has no output---all the data generated is internally added to the reactiveValues list `spp`. Finally, we make some UI updates (which can only be made in `server.R`) to switch to the "Results" tab automatically to view the table.
 
 ```{r}
 # # # # # # # # # # # #
@@ -363,13 +363,13 @@ output$corrSummary <- renderPrint({
 })
 ```
 
-### Step 5: Write `gtext_model_runGAM.Rmd`
+### Step 5: Write `gtext_espace_modCorr.Rmd`
 
 The last vital step is writing guidance text for your module. This text is meant for the benefit of other users who would like to read a detailed description of what your module does and where to find more relevant information. 
 
 There are three categories for guidance text. BACKGROUND provides general information about the framing of the module's technique in the grand scheme of things. IMPLEMENTATION describes how the technique is used in this module. Finally, REFERENCES is a bibliography of academic sources that are referenced in the text.
 
-Save the code below as a script to: `wallace/inst/shiny/Rmd/gtext_model_GAM.R`. This filename is a combination of the component shortcut name "model" (from the tabPanel value name in `ui.R`) and the module shortcut name "GAM" (from the radio button ID in `ui.R`). Code in `server.R` automatically references the guidance text if the name matches this syntax and loads it in the "Component Guidance" and "Module Guidance" tabs in the map window.
+Save the code below as a script to: `wallace/inst/shiny/Rmd/gtext_espace_modCorr.Rmd`. This filename is a combination of the component shortcut name "espace" (from the tabPanel value name in `ui.R`) and the module shortcut name "modCorr" (from the radio button ID in `ui.R`). Code in `server.R` automatically references the guidance text if the name matches this syntax and loads it in the "Component Guidance" and "Module Guidance" tabs in the map window.
 
 ```{markdown}
 ---
